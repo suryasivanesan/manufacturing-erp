@@ -1,9 +1,23 @@
 node_modules
 .next
 dist
+build
 .git
 .env
 .env.local
+.env.*.local
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Next.js Frontend (deployed separately on Vercel)
+app
+components
+
+# Local SQLite databases and Docker volumes
+*.db
+*.db-journal
+dev.db
+postgres_data
+redis_data
