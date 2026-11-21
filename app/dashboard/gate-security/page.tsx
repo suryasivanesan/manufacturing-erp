@@ -1473,7 +1473,11 @@ export default function GateSecurityDashboardPage() {
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-1.5">
-                            {vis.safetyPpeHelmetIssued && <HardHat className="w-4 h-4 text-amber-500" title="Safety Helmet Issued" />}
+                            {vis.safetyPpeHelmetIssued && (
+                              <span title="Safety Helmet Issued" className="inline-flex">
+                                <HardHat className="w-4 h-4 text-amber-500" />
+                              </span>
+                            )}
                             {vis.safetyPpeVestIssued && <span className="text-xs font-bold text-emerald-600">Vest OK</span>}
                             {vis.safetyPpeShoesVerified && <span className="text-xs font-bold text-emerald-600">• Shoes OK</span>}
                           </div>
