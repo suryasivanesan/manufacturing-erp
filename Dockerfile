@@ -27,7 +27,7 @@ COPY src ./src/
 COPY types ./types/
 
 # Generate Prisma Client and build the NestJS server
-RUN npm run prisma:generate && npm run server:build
+RUN npx prisma generate && npm run server:build
 
 # Remove development dependencies to keep the image slim
 RUN npm prune --omit=dev
@@ -61,5 +61,5 @@ EXPOSE 3001
 # Run as non-root user
 USER node
 
-# Start the NestJS backend
-CMD ["npm", "run", "server:start"]
+# Start the NestJS backend directly (no npm wrapper overhead, direct PID 1)
+CMD ["node", "dist/main"]
