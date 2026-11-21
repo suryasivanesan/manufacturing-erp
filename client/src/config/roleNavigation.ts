@@ -39,6 +39,7 @@ export const DYNAMIC_RBAC_STORAGE_KEY = 'apex_erp_dynamic_rbac_v2';
  */
 export const PATH_TO_FUNCTION_KEY: Record<string, string> = {
   '/pricing-control': 'FUNC_PRICING_CONTROL',
+  '/factory-electricity': 'FUNC_PRICING_CONTROL',
   '/super-admin': 'FUNC_EXECUTIVE_COMMAND',
   '/admin/role-permissions': 'FUNC_RBAC_MANAGEMENT',
   '/admin/salary-audit': 'FUNC_PAYROLL_FINAL_SIGNOFF',
@@ -90,6 +91,7 @@ export const PATH_TO_FUNCTION_KEY: Record<string, string> = {
 export const CATEGORY_TO_PATHS_MAP: Record<string, string[]> = {
   'TOP MANAGEMENT (OWNER / MD)': [
     '/pricing-control',
+    '/factory-electricity',
     '/super-admin',
     '/admin/role-permissions',
     '/admin/salary-audit',
@@ -547,7 +549,7 @@ export function isPathAuthorizedForRole(targetHref: string, roleId?: string): bo
 
   // Hard barrier: Top management executive routes are strictly forbidden for non-super_admin roles
   // (unless system_admin explicitly accesses /admin/role-permissions)
-  const isTopMgmtRoute = cleanTarget === '/pricing-control' || cleanTarget === '/super-admin' || cleanTarget === '/admin/salary-audit';
+  const isTopMgmtRoute = cleanTarget === '/pricing-control' || cleanTarget === '/factory-electricity' || cleanTarget === '/super-admin' || cleanTarget === '/admin/salary-audit';
   if (isTopMgmtRoute) {
     return false;
   }

@@ -35,6 +35,10 @@ const ROUTE_TITLE_MAP: Record<string, { title: string; badge: string }> = {
     title: 'Product Cost & Selling Prices',
     badge: 'EMP-001',
   },
+  '/factory-electricity': {
+    title: 'Factory Electricity & Running Costs',
+    badge: 'PWR-001',
+  },
   '/super-admin': {
     title: 'Factory Production & Machine Overview',
     badge: 'EMP-001',

@@ -1,14 +1,59 @@
 {
   "name": "manufacturing-erp",
   "version": "1.0.0",
+  "description": "Enterprise Manufacturing Resource Planning (ERP) System",
   "private": true,
-  "workspaces": [
-    "server",
-    "client"
-  ],
   "scripts": {
-    "server:dev": "npm --workspace=server run start:dev",
-    "client:dev": "npm --workspace=client run dev",
-    "build": "npm --workspaces run build"
-  }
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "server:dev": "nest start --watch",
+    "server:build": "nest build",
+    "server:start": "node dist/main",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio",
+    "postinstall": "prisma generate",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/config": "^3.2.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/jwt": "^10.2.0",
+    "@nestjs/passport": "^10.0.3",
+    "@nestjs/platform-express": "^10.0.0",
+    "@prisma/client": "^5.10.0",
+    "bcrypt": "^5.1.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "lucide-react": "^0.368.0",
+    "next": "^14.2.0",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "reflect-metadata": "^0.2.1",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.0.0",
+    "@nestjs/schematics": "^10.0.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/node": "^20.11.0",
+    "@types/passport-jwt": "^4.0.1",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "prisma": "^5.10.0",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.4.0"
+  },
+  "main": "next.config.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
 }

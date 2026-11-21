@@ -24,7 +24,14 @@ pnpm-debug.log*
 lerna-debug.log*
 *.log
 
-# Prisma generated artifacts
+# Prisma generated artifacts & SQLite storage
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+dev.db
+prisma/*.db
+prisma/*.db-journal
 prisma/*.sqlite
 prisma/*.sqlite-journal
 

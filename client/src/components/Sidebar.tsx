@@ -100,7 +100,7 @@ export function Sidebar() {
         defaultOpen: true,
         items: [
           { name: 'Product Cost & Selling Prices', href: '/pricing-control', icon: Coins },
-          { name: 'Factory Electricity & Running Costs', href: '/pricing-control?tab=overheads', icon: Zap },
+          { name: 'Factory Electricity & Running Costs', href: '/factory-electricity', icon: Zap },
           { name: 'Machine Performance & Plant Uptime', href: '/super-admin', icon: LayoutGrid },
           { name: 'Product Parts List & Recipe Stock', href: '/design/bom-editor', icon: Layers },
           { name: 'Customer Order Feasibility Check', href: '/crm', icon: ClipboardCheck },
