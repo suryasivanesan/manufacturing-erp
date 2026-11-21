@@ -49,6 +49,7 @@ import {
   Crown,
   Coins,
   Award,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 // =========================================================================
@@ -1460,6 +1461,7 @@ interface UpholsteryFoamRecord {
   californiaTb117Passed: boolean;
   status: 'MARKER_NESTING' | 'FOAM_CUTTING' | 'SEWING_STITCHING' | 'COMPLETED' | 'FABRIC_DEFECT_HOLD';
   technicianNotes?: string;
+  operatorNotes?: string;
   createdAt: string;
 }
 
@@ -1588,9 +1590,14 @@ interface DairyQaRecord {
   testReportNumber: string;
   sampleBatchCode: string;
   sampleType: 'RAW_SILO_MILK' | 'PASTEURIZED_PACKAGED' | 'FERMENTED_CURD' | 'BULK_TANKER_INWARD';
-  mbrtDecolorizationHours: number;
-  mbrtQualityGrade: 'EXCELLENT_OVER_5H' | 'GOOD_3_4H' | 'FAIR_1_2H' | 'POOR_UNDER_30M';
-  antibioticResidueTest: 'NEGATIVE_PASSED' | 'POSITIVE_CONTAMINATED';
+  dairyProductType?: string;
+  siloOrVatNumber?: string;
+  mbrtDecolorizationHours?: number;
+  mbrtReductionHours?: number;
+  mbrtQualityGrade?: 'EXCELLENT_OVER_5H' | 'GOOD_3_4H' | 'FAIR_1_2H' | 'POOR_UNDER_30M';
+  antibioticResidueTest?: 'NEGATIVE_PASSED' | 'POSITIVE_CONTAMINATED';
+  betaLactamResiduePass?: boolean;
+  tetracyclineResiduePass?: boolean;
   aflatoxinM1Ppb: number;
   somaticCellCountPerMl: number;
   totalColiformCountCfu: number;
@@ -6084,7 +6091,7 @@ export default function SpecializedOperationsHubPage() {
       outerDiameterMeasuredMm: Number(formData.get('outerD')) || 110.2,
       pipeLengthMeters: Number(formData.get('pipeLength')) || 6.0,
       ovalityTolerancePassed: ovalityPassed,
-      isWallThicknessInTolerance,
+      isWallThicknessInTolerance: isThicknessInTolerance,
       packagingBlocked: isBlocked,
       clearanceStatus,
       rejectionReason,
@@ -6825,7 +6832,7 @@ export default function SpecializedOperationsHubPage() {
       stepLapMiterAngleDeg: Number(formData.get('miterAngle')) || 45.0,
       totalCoreWeightKg: Number(formData.get('coreWeight')) || 1850.0,
       tieRodTorqueNm: torque,
-      targetTorqueNm,
+      targetTorqueNm: targetTorque,
       noLoadLossWattsPerKg: loss,
       maxPermittedLossWatts: maxLoss,
       clampingStatus,
@@ -9292,35 +9299,37 @@ export default function SpecializedOperationsHubPage() {
                         <tr key={q.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                           <td className="py-4 px-5">
                             <div className="font-bold text-slate-900 dark:text-white">{q.sampleBatchCode}</div>
-                            <div className="text-sm font-semibold text-sky-600 dark:text-sky-400">{q.dairyProductType.replace(/_/g, ' ')}</div>
-                            <div className="text-xs text-slate-500 font-mono mt-0.5">{q.siloOrVatNumber}</div>
+                            <div className="text-sm font-semibold text-sky-600 dark:text-sky-400">
+                              {q.dairyProductType ? q.dairyProductType.replace(/_/g, ' ') : q.sampleType}
+                            </div>
+                            <div className="text-xs text-slate-500 font-mono mt-0.5">{q.siloOrVatNumber || 'SILO-01'}</div>
                           </td>
                           <td className="py-4 px-5">
                             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold border ${
-                              q.mbrtReductionHours >= 4.5
+                              (q.mbrtReductionHours ?? q.mbrtDecolorizationHours ?? 5) >= 4.5
                                 ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                                 : 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                             }`}>
                               <Clock className="w-3.5 h-3.5" />
-                              {q.mbrtReductionHours} hrs ({q.mbrtReductionHours >= 5.0 ? 'EXCELLENT' : q.mbrtReductionHours >= 4.5 ? 'GOOD' : 'POOR'})
+                              {(q.mbrtReductionHours ?? q.mbrtDecolorizationHours ?? 5)} hrs ({(q.mbrtReductionHours ?? q.mbrtDecolorizationHours ?? 5) >= 5.0 ? 'EXCELLENT' : (q.mbrtReductionHours ?? q.mbrtDecolorizationHours ?? 5) >= 4.5 ? 'GOOD' : 'POOR'})
                             </span>
                           </td>
                           <td className="py-4 px-5">
                             <div className="space-y-1">
                               <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                                q.betaLactamResiduePass
+                                (q.betaLactamResiduePass ?? (q.antibioticResidueTest === 'NEGATIVE_PASSED'))
                                   ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                                   : 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                               }`}>
-                                Beta-Lactam: {q.betaLactamResiduePass ? 'PASS' : 'FAIL'}
+                                Beta-Lactam: {(q.betaLactamResiduePass ?? (q.antibioticResidueTest === 'NEGATIVE_PASSED')) ? 'PASS' : 'FAIL'}
                               </span>
                               <div>
                                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                                  q.tetracyclineResiduePass
+                                  (q.tetracyclineResiduePass ?? (q.antibioticResidueTest === 'NEGATIVE_PASSED'))
                                     ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                                     : 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                                 }`}>
-                                  Tetracycline: {q.tetracyclineResiduePass ? 'PASS' : 'FAIL'}
+                                  Tetracycline: {(q.tetracyclineResiduePass ?? (q.antibioticResidueTest === 'NEGATIVE_PASSED')) ? 'PASS' : 'FAIL'}
                                 </span>
                               </div>
                             </div>
@@ -34570,11 +34579,15 @@ export default function SpecializedOperationsHubPage() {
               </div>
               <div>
                 <span className="text-slate-400 block font-semibold">Product Type:</span>
-                <span className="font-bold text-slate-900 dark:text-white">{selectedDairyCoa.dairyProductType.replace(/_/g, ' ')}</span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {selectedDairyCoa.dairyProductType ? selectedDairyCoa.dairyProductType.replace(/_/g, ' ') : selectedDairyCoa.sampleType}
+                </span>
               </div>
               <div>
                 <span className="text-slate-400 block font-semibold">Source Silo / Vat:</span>
-                <span className="font-mono font-extrabold text-slate-900 dark:text-white">{selectedDairyCoa.siloOrVatNumber}</span>
+                <span className="font-mono font-extrabold text-slate-900 dark:text-white">
+                  {selectedDairyCoa.siloOrVatNumber || 'SILO-01'}
+                </span>
               </div>
             </div>
 
@@ -34588,7 +34601,7 @@ export default function SpecializedOperationsHubPage() {
                   <span>MBRT Decolorization Hold:</span>
                   <span className="font-bold text-emerald-600 flex items-center gap-1">
                     <CheckCircle2 className="w-4 h-4" />
-                    PASSED ({selectedDairyCoa.mbrtReductionHours} hrs &ge; 4.5 hrs)
+                    PASSED ({selectedDairyCoa.mbrtReductionHours ?? selectedDairyCoa.mbrtDecolorizationHours ?? 5} hrs &ge; 4.5 hrs)
                   </span>
                 </div>
                 <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between">

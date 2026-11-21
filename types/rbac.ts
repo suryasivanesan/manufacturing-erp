@@ -2115,6 +2115,7 @@ export const MANUFACTURING_DEPARTMENTS: DepartmentMeta[] = [
   {
     key: 'MACHINE_MAINTENANCE',
     label: 'Machine Maintenance',
+    shortLabel: 'Maintenance',
     codePrefix: 'MNT',
     allowedDesignations: [
       'MANAGER',
@@ -2134,6 +2135,7 @@ export const MANUFACTURING_DEPARTMENTS: DepartmentMeta[] = [
   {
     key: 'PURCHASING_SOURCING',
     label: 'Purchasing & Sourcing',
+    shortLabel: 'Purchasing',
     codePrefix: 'PUR',
     allowedDesignations: ['MANAGER', 'ASSISTANT_MANAGER', 'ASSOCIATE_MANAGER'],
     description: 'Vendor selection, RFQs, purchase order approvals & raw material procurement',
