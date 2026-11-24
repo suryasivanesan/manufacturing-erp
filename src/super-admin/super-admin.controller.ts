@@ -103,6 +103,12 @@ export class SuperAdminController {
     return this.superAdminService.getProducts(user);
   }
 
+  @Get('products/:id')
+  async getProduct(@Request() req: any, @Param('id') id: string) {
+    const user = this.extractUser(req);
+    return this.superAdminService.getProduct(user, id);
+  }
+
   @Post('products')
   @HttpCode(HttpStatus.CREATED)
   async createProduct(@Request() req: any, @Body() dto: CreateProductDto) {
@@ -280,9 +286,15 @@ export class SuperAdminController {
   async updateProductPricing(
     @Request() req: any,
     @Param('id') id: string,
-    @Body('sellingPrice') sellingPrice: number,
+    @Body() body: any,
   ) {
     const user = this.extractUser(req);
+    const sellingPrice =
+      typeof body === 'number'
+        ? body
+        : body?.sellingPrice !== undefined
+        ? body.sellingPrice
+        : body?.price;
     return this.superAdminService.updateProductPricing(user, id, sellingPrice);
   }
 
@@ -290,9 +302,15 @@ export class SuperAdminController {
   async updateProductSellingPrice(
     @Request() req: any,
     @Param('id') id: string,
-    @Body('sellingPrice') sellingPrice: number,
+    @Body() body: any,
   ) {
     const user = this.extractUser(req);
+    const sellingPrice =
+      typeof body === 'number'
+        ? body
+        : body?.sellingPrice !== undefined
+        ? body.sellingPrice
+        : body?.price;
     return this.superAdminService.updateProductPricing(user, id, sellingPrice);
   }
 

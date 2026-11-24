@@ -386,15 +386,126 @@ export class SuperAdminService {
       if ((this.prisma as any).product) {
         const found = await (this.prisma as any).product.findMany({
           where: { companyId },
+          include: {
+            rawMaterials: {
+              include: { rawMaterial: true },
+            },
+          },
           orderBy: { createdAt: 'desc' },
         });
-        if (found && found.length > 0) return found;
+        if (found && found.length > 0) {
+          return found.map((p: any) => {
+            const costPrice = Number(p.costPrice || 0);
+            const sellingPrice = Number(p.sellingPrice || 0);
+            const profitMarginAmount = Number((sellingPrice - costPrice).toFixed(2));
+            const profitMarginPercentage =
+              costPrice > 0 ? Number((((sellingPrice - costPrice) / costPrice) * 100).toFixed(2)) : 0.0;
+            return {
+              ...p,
+              costPrice,
+              sellingPrice,
+              profitAmount: profitMarginAmount,
+              profitMarginAmount,
+              profitMarginPercent: profitMarginPercentage,
+              profitMarginPercentage,
+              bomComponents: (p.rawMaterials || []).map((m: any) => ({
+                id: m.id,
+                rawMaterialId: m.rawMaterialId,
+                name: m.rawMaterial?.name,
+                materialCode: m.rawMaterial?.materialCode,
+                rate: m.rawMaterial?.rate ?? m.rawMaterial?.costPrice ?? 0,
+                unit: m.rawMaterial?.unit,
+                quantity: m.quantity,
+                scrapFactor: m.scrapFactor,
+                lineCost: Number(
+                  ((m.rawMaterial?.rate ?? m.rawMaterial?.costPrice ?? 0) * m.quantity * (1 + (m.scrapFactor || 0))).toFixed(2),
+                ),
+              })),
+            };
+          });
+        }
       }
     } catch (err: unknown) {
       this.logger.warn(`Prisma product fetch fallback: ${this.errMsg(err)}`);
     }
 
-    return this.inMemoryProducts.filter((p: any) => p.companyId === companyId || !p.companyId);
+    return this.inMemoryProducts
+      .filter((p: any) => p.companyId === companyId || !p.companyId)
+      .map((p: any) => {
+        const costPrice = Number(p.costPrice || 0);
+        const sellingPrice = Number(p.sellingPrice || 0);
+        const profitMarginAmount = Number((sellingPrice - costPrice).toFixed(2));
+        const profitMarginPercentage =
+          costPrice > 0 ? Number((((sellingPrice - costPrice) / costPrice) * 100).toFixed(2)) : 0.0;
+        return {
+          ...p,
+          costPrice,
+          sellingPrice,
+          profitAmount: profitMarginAmount,
+          profitMarginAmount,
+          profitMarginPercent: profitMarginPercentage,
+          profitMarginPercentage,
+          bomComponents: p.bomComponents || [],
+        };
+      });
+  }
+
+  async getProduct(user: UserContext, id: string) {
+    if (!user?.companyId) throw new BadRequestException('Company association required.');
+    const companyId = user.companyId;
+
+    let product: any = null;
+    try {
+      if ((this.prisma as any).product) {
+        product = await (this.prisma as any).product.findFirst({
+          where: { id, companyId },
+          include: {
+            rawMaterials: {
+              include: { rawMaterial: true },
+            },
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma getProduct fallback: ${this.errMsg(err)}`);
+    }
+
+    if (!product) {
+      product = this.inMemoryProducts.find((p: any) => p.id === id && (p.companyId === companyId || !p.companyId));
+    }
+
+    if (!product) {
+      throw new NotFoundException(`Product ${id} not found.`);
+    }
+
+    const costPrice = Number(product.costPrice || 0);
+    const sellingPrice = Number(product.sellingPrice || 0);
+    const profitMarginAmount = Number((sellingPrice - costPrice).toFixed(2));
+    const profitMarginPercentage =
+      costPrice > 0 ? Number((((sellingPrice - costPrice) / costPrice) * 100).toFixed(2)) : 0.0;
+
+    return {
+      ...product,
+      costPrice,
+      sellingPrice,
+      profitAmount: profitMarginAmount,
+      profitMarginAmount,
+      profitMarginPercent: profitMarginPercentage,
+      profitMarginPercentage,
+      bomComponents: (product.rawMaterials || []).map((m: any) => ({
+        id: m.id,
+        rawMaterialId: m.rawMaterialId,
+        name: m.rawMaterial?.name,
+        materialCode: m.rawMaterial?.materialCode,
+        rate: m.rawMaterial?.rate ?? m.rawMaterial?.costPrice ?? 0,
+        unit: m.rawMaterial?.unit,
+        quantity: m.quantity,
+        scrapFactor: m.scrapFactor,
+        lineCost: Number(
+          ((m.rawMaterial?.rate ?? m.rawMaterial?.costPrice ?? 0) * m.quantity * (1 + (m.scrapFactor || 0))).toFixed(2),
+        ),
+      })),
+    };
   }
 
   async updateProduct(user: UserContext, id: string, dto: Partial<CreateProductDto>) {
