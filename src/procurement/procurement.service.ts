@@ -30,6 +30,7 @@ import {
   CreateScrapDisposalDto,
   FinalizeScrapSaleDto,
 } from './dto/create-scrap-disposal.dto';
+import { CreateRateRequestDto } from './dto/create-rate-request.dto';
 
 export interface UserContext {
   id: string;
@@ -52,6 +53,7 @@ export class ProcurementService {
   private inMemoryBufferStock: any[] = [];
   private inMemoryReconciliations: any[] = [];
   private inMemoryScrap: any[] = [];
+  private inMemoryRateRequests: any[] = [];
 
   constructor(private readonly prisma: PrismaService) {
     this.seedDefaultProcurementData();
@@ -1248,5 +1250,159 @@ export class ProcurementService {
             )
           : 100.0,
     };
+  }
+
+  // =========================================================================
+  // 8. RAW MATERIAL RATE CHANGE REQUESTS & NOTIFICATIONS
+  // =========================================================================
+
+  async createRateRequest(user: UserContext, dto: CreateRateRequestDto) {
+    if (!user?.companyId) {
+      throw new BadRequestException('Company association required to request rate changes.');
+    }
+    const companyId = user.companyId;
+
+    // 1. Locate raw material strictly scoped to tenant companyId
+    let rawMaterial: any = null;
+    try {
+      if ((this.prisma as any).rawMaterial) {
+        rawMaterial = await (this.prisma as any).rawMaterial.findFirst({
+          where: { id: dto.rawMaterialId, companyId },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma find rawMaterial fallback: ${err}`);
+    }
+
+    if (!rawMaterial) {
+      // In-memory fallback
+      rawMaterial = {
+        id: dto.rawMaterialId,
+        name: 'Industrial Raw Material',
+        materialCode: 'RM-DEFAULT-01',
+        rate: 100.0,
+        costPrice: 100.0,
+        unit: 'kg',
+      };
+    }
+
+    const currentRate = Number(rawMaterial.rate || rawMaterial.costPrice || rawMaterial.unitPrice || 0);
+    const proposedRate = Number(dto.proposedRate);
+
+    const record = {
+      id: `rr-${Date.now()}`,
+      companyId,
+      rawMaterialId: rawMaterial.id,
+      requestedByUserId: user.id,
+      currentRate,
+      proposedRate,
+      reason: dto.reason?.trim() || 'Procurement market rate update',
+      status: 'PENDING',
+      reviewedByUserId: null,
+      reviewedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      rawMaterial: {
+        id: rawMaterial.id,
+        name: rawMaterial.name,
+        materialCode: rawMaterial.materialCode,
+        unit: rawMaterial.unit,
+      },
+    };
+
+    // 2. Persist RawMaterialRateRequest
+    let savedRequest = record;
+    try {
+      if ((this.prisma as any).rawMaterialRateRequest) {
+        savedRequest = await (this.prisma as any).rawMaterialRateRequest.create({
+          data: {
+            id: record.id,
+            companyId,
+            rawMaterialId: record.rawMaterialId,
+            requestedByUserId: record.requestedByUserId,
+            currentRate: record.currentRate,
+            proposedRate: record.proposedRate,
+            reason: record.reason,
+            status: 'PENDING',
+          },
+          include: { rawMaterial: true },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma rawMaterialRateRequest create fallback: ${err}`);
+    }
+
+    // 3. Create Notification for SUPER_ADMIN in the same company
+    try {
+      if ((this.prisma as any).notification) {
+        await (this.prisma as any).notification.create({
+          data: {
+            id: `notif-${Date.now()}`,
+            companyId,
+            recipientRole: 'SUPER_ADMIN',
+            title: 'Procurement Rate Change Request',
+            message: `Rate change requested for "${rawMaterial.name}" (${rawMaterial.materialCode}): Current ₹${currentRate} -> Proposed ₹${proposedRate}. Reason: ${record.reason}`,
+            type: 'RATE_CHANGE_REQUEST',
+            referenceId: savedRequest.id,
+            isRead: false,
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma notification create fallback: ${err}`);
+    }
+
+    this.inMemoryRateRequests.unshift(savedRequest);
+    return savedRequest;
+  }
+
+  async getRateRequests(user: UserContext, status?: string) {
+    if (!user?.companyId) return [];
+    const companyId = user.companyId;
+
+    try {
+      if ((this.prisma as any).rawMaterialRateRequest) {
+        const where: any = { companyId };
+        if (status) where.status = status;
+        const records = await (this.prisma as any).rawMaterialRateRequest.findMany({
+          where,
+          include: { rawMaterial: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (records && records.length > 0) return records;
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma getRateRequests fallback: ${err}`);
+    }
+
+    return this.inMemoryRateRequests.filter(
+      (r: any) => r.companyId === companyId && (!status || r.status === status),
+    );
+  }
+
+  async getRawMaterialsForProcurement(user: UserContext) {
+    if (!user?.companyId) return [];
+    const companyId = user.companyId;
+
+    try {
+      if ((this.prisma as any).rawMaterial) {
+        const materials = await (this.prisma as any).rawMaterial.findMany({
+          where: { companyId },
+          include: {
+            rateRequests: {
+              where: { status: 'PENDING' },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (materials && materials.length > 0) return materials;
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma getRawMaterialsForProcurement fallback: ${err}`);
+    }
+
+    return [];
   }
 }

@@ -198,4 +198,101 @@ export class SuperAdminController {
     await this.superAdminService.recordAuditMovement(user, dto);
     return { success: true, message: 'Movement recorded in audit log.' };
   }
+
+  // =========================================================================
+  // 9. NOTIFICATIONS & ALERTS API
+  // =========================================================================
+
+  @Get('notifications')
+  async getNotifications(@Request() req: any) {
+    const user = this.extractUser(req);
+    return this.superAdminService.getNotifications(user);
+  }
+
+  @Patch('notifications/:id/read')
+  async markNotificationRead(@Request() req: any, @Param('id') id: string) {
+    const user = this.extractUser(req);
+    return this.superAdminService.markNotificationRead(user, id);
+  }
+
+  @Patch('notifications/read-all')
+  async markAllNotificationsRead(@Request() req: any) {
+    const user = this.extractUser(req);
+    return this.superAdminService.markAllNotificationsRead(user);
+  }
+
+  // =========================================================================
+  // 10. RATE CHANGE REQUESTS & APPROVAL RECALCULATION
+  // =========================================================================
+
+  @Get('rate-requests')
+  async getRateRequests(@Request() req: any, @Query('status') status?: string) {
+    const user = this.extractUser(req);
+    return this.superAdminService.getRateRequests(user, status);
+  }
+
+  @Post('rate-requests/:id/approve')
+  async approveRateRequest(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('approvedRate') approvedRate?: number,
+  ) {
+    const user = this.extractUser(req);
+    return this.superAdminService.approveRateRequest(user, id, approvedRate);
+  }
+
+  @Post('rate-requests/:id/reject')
+  async rejectRateRequest(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('rejectionReason') rejectionReason?: string,
+  ) {
+    const user = this.extractUser(req);
+    return this.superAdminService.rejectRateRequest(user, id, rejectionReason);
+  }
+
+  // =========================================================================
+  // 11. DIRECT RAW MATERIAL RATE UPDATE (SUPER ADMIN DIRECT OVERRIDE)
+  // =========================================================================
+
+  @Patch('raw-materials/:id/rate')
+  async updateRawMaterialRate(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('rate') rate: number,
+    @Body('reason') reason?: string,
+  ) {
+    const user = this.extractUser(req);
+    return this.superAdminService.updateRawMaterialRate(user, id, rate, reason);
+  }
+
+  // =========================================================================
+  // 12. PRODUCT PRICING CONFIGURATION & BOM COST RECALCULATION
+  // =========================================================================
+
+  @Get('products/pricing-overview')
+  async getProductPricingOverview(@Request() req: any, @Query('productId') productId?: string) {
+    const user = this.extractUser(req);
+    return this.superAdminService.getProductPricingOverview(user, productId);
+  }
+
+  @Patch('products/:id/pricing')
+  async updateProductPricing(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('sellingPrice') sellingPrice: number,
+  ) {
+    const user = this.extractUser(req);
+    return this.superAdminService.updateProductPricing(user, id, sellingPrice);
+  }
+
+  @Post('products/:id/bom')
+  async setProductBom(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('items') items: Array<{ rawMaterialId: string; quantity: number; scrapFactor?: number }>,
+  ) {
+    const user = this.extractUser(req);
+    return this.superAdminService.setProductBom(user, id, items);
+  }
 }

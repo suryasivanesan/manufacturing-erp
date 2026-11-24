@@ -164,6 +164,9 @@ model Company {
   // Core ERP Multi-Tenant Management Entities (Super Admin Governance)
   rawMaterials               RawMaterial[]
   products                   Product[]
+  productRawMaterials        ProductRawMaterial[]
+  rawMaterialRateRequests    RawMaterialRateRequest[]
+  notifications              Notification[]
   employeePayrolls           EmployeePayroll[]
   auditLogs                  AuditLog[]
   approvalRequests           ApprovalRequest[]
@@ -2050,8 +2053,10 @@ model RawMaterial {
   materialCode    String    @unique // e.g. "RM-ST-001", "RM-CHEM-104", "RM-POLY-01"
   name            String    // e.g. "Direct Reduced Iron (DRI)", "Pure Acrylic Emulsion", "PVC Resin K-67"
   category        String    // e.g. "Metals", "Polymers", "Chemicals", "Pigments", "Packaging"
-  costPrice       Float     // Inward purchase cost per unit
-  sellingPrice    Float     // Standard baseline / resale valuation per unit
+  costPrice       Float     @default(0.0) // Inward purchase cost per unit
+  sellingPrice    Float     @default(0.0) // Standard baseline / resale valuation per unit
+  unitPrice       Float     @default(0.0) // Active inward procurement rate per unit
+  rate            Float     @default(0.0) // Active procurement rate per unit
   unit            String    // Measurement unit: MT, kg, m, ltr, Pcs
   currentStock    Float     @default(0.0)
   reorderLevel    Float     @default(10.0)
@@ -2061,6 +2066,9 @@ model RawMaterial {
 
   companyId       String
   company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  productMappings ProductRawMaterial[]
+  rateRequests    RawMaterialRateRequest[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -2080,8 +2088,8 @@ model Product {
   sku             String    @unique // e.g. "PRD-2055516-V3", "PRD-PIPE-110", "PRD-COIL-400"
   name            String    // e.g. "205/55 R16 Tubeless Radial", "110mm PVC Pressure Pipe PN10"
   category        String    // e.g. "Finished Goods", "Sub-Assemblies", "Commercial Stock"
-  costPrice       Float     // Manufacturing / conversion cost per unit
-  sellingPrice    Float     // Customer catalog sales price per unit
+  costPrice       Float     @default(0.0) // Manufacturing / conversion cost per unit (auto-calculated from raw materials)
+  sellingPrice    Float     @default(0.0) // Customer catalog sales price per unit (configured by Super Admin)
   unit            String    // Measurement unit: MT, Pcs, m, ltr
   currentStock    Float     @default(0.0)
   minStockLevel   Float     @default(5.0)
@@ -2092,6 +2100,8 @@ model Product {
   companyId       String
   company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
+  rawMaterials    ProductRawMaterial[]
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -2099,6 +2109,87 @@ model Product {
   @@index([sku])
   @@index([category])
   @@map("products")
+}
+
+//
+// Product <-> RawMaterial Mapping (Bill of Materials BOM)
+// Strictly scoped by companyId (Multi-Tenancy)
+// Used to auto-calculate Product costPrice from raw materials
+//
+model ProductRawMaterial {
+  id            String      @id @default(uuid())
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rawMaterialId String
+  rawMaterial   RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+  quantity      Float       @default(1.0) // Quantity of raw material consumed per 1 unit of Product
+  scrapFactor   Float       @default(0.0) // Scrap / wastage percentage (e.g. 0.05 for 5%)
+  notes         String?
+
+  companyId     String
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([productId, rawMaterialId])
+  @@index([companyId])
+  @@index([productId])
+  @@index([rawMaterialId])
+  @@map("product_raw_materials")
+}
+
+//
+// Raw Material Rate Change Request
+// Submitted by Procurement, Approved/Rejected by Super Admin
+// Strictly scoped by companyId (Multi-Tenancy)
+//
+model RawMaterialRateRequest {
+  id                String      @id @default(uuid())
+  companyId         String
+  company           Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rawMaterialId     String
+  rawMaterial       RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+  requestedByUserId String?
+  currentRate       Float
+  proposedRate      Float
+  reason            String?
+  status            String      @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  rejectionReason   String?
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([companyId])
+  @@index([rawMaterialId])
+  @@index([status])
+  @@map("raw_material_rate_requests")
+}
+
+//
+// In-App Notification System
+// Strictly scoped by companyId & recipientRole (e.g. SUPER_ADMIN)
+//
+model Notification {
+  id            String    @id @default(uuid())
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  recipientRole String    @default("SUPER_ADMIN") // SUPER_ADMIN, PROCUREMENT, etc.
+  title         String
+  message       String
+  type          String    // "RATE_CHANGE_REQUEST", "PRICING_UPDATE", "SYSTEM"
+  referenceId   String?   // e.g. RawMaterialRateRequest id
+  isRead        Boolean   @default(false)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([recipientRole])
+  @@index([isRead])
+  @@map("notifications")
 }
 
 // 

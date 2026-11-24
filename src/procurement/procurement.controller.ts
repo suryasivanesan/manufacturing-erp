@@ -36,6 +36,7 @@ import {
   CreateScrapDisposalDto,
   FinalizeScrapSaleDto,
 } from './dto/create-scrap-disposal.dto';
+import { CreateRateRequestDto } from './dto/create-rate-request.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -421,5 +422,60 @@ export class ProcurementController {
   async getProcurementDashboardKpis(@Request() req: any) {
     const user = this.extractUser(req);
     return await this.procurementService.getProcurementDashboardKpis(user);
+  }
+
+  // =========================================================================
+  // 8. RAW MATERIAL RATE CHANGE REQUESTS
+  // =========================================================================
+
+  @Post('rate-requests')
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.EXECUTIVE,
+    Role.PROCUREMENT,
+    Role.PROCUREMENT_MANAGER,
+    Role.PROCUREMENT_ASSISTANT_MANAGER,
+    Role.PURCHASING_SOURCING_MANAGER,
+  )
+  @HttpCode(HttpStatus.CREATED)
+  async createRateRequest(
+    @Request() req: any,
+    @Body() dto: CreateRateRequestDto,
+  ) {
+    const user = this.extractUser(req);
+    return await this.procurementService.createRateRequest(user, dto);
+  }
+
+  @Get('rate-requests')
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.EXECUTIVE,
+    Role.PROCUREMENT,
+    Role.PROCUREMENT_MANAGER,
+    Role.PROCUREMENT_ASSISTANT_MANAGER,
+    Role.PURCHASING_SOURCING_MANAGER,
+    Role.FINANCE,
+  )
+  async getRateRequests(
+    @Request() req: any,
+    @Query('status') status?: string,
+  ) {
+    const user = this.extractUser(req);
+    return await this.procurementService.getRateRequests(user, status);
+  }
+
+  @Get('raw-materials')
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.EXECUTIVE,
+    Role.PROCUREMENT,
+    Role.PROCUREMENT_MANAGER,
+    Role.PROCUREMENT_ASSISTANT_MANAGER,
+    Role.PURCHASING_SOURCING_MANAGER,
+    Role.FINANCE,
+  )
+  async getRawMaterials(@Request() req: any) {
+    const user = this.extractUser(req);
+    return await this.procurementService.getRawMaterialsForProcurement(user);
   }
 }

@@ -38,6 +38,7 @@ import {
   Calendar,
   CreditCard,
   XCircle,
+  AlertCircle,
 } from 'lucide-react';
 
 // =========================================================================
@@ -180,8 +181,45 @@ interface ScrapDisposalManagement {
   createdAt: string;
 }
 
+interface RawMaterialItem {
+  id: string;
+  materialCode: string;
+  name: string;
+  category: string;
+  unit: string;
+  currentStock: number;
+  rate: number;
+  costPrice?: number;
+  unitPrice?: number;
+  reorderLevel?: number;
+  companyId?: string;
+}
+
+interface RawMaterialRateRequestItem {
+  id: string;
+  companyId: string;
+  rawMaterialId: string;
+  rawMaterial?: {
+    id: string;
+    name: string;
+    materialCode: string;
+    unit: string;
+    rate?: number;
+  };
+  requestedByUserId?: string;
+  currentRate: number;
+  proposedRate: number;
+  reason?: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  createdAt: string;
+}
+
 type ProcurementTab =
   | 'sourcing'
+  | 'rate_requests'
   | 'purchase_orders'
   | 'inward'
   | 'buffer_stock'
@@ -211,6 +249,13 @@ export default function ProcurementPage() {
   const [isNewBufferModal, setIsNewBufferModal] = useState(false);
   const [isNewReconciliationModal, setIsNewReconciliationModal] = useState(false);
   const [isNewScrapModal, setIsNewScrapModal] = useState(false);
+  const [isNewRateRequestModal, setIsNewRateRequestModal] = useState(false);
+
+  // Rate Change Request Specific States
+  const [selectedMaterialForRequest, setSelectedMaterialForRequest] = useState<RawMaterialItem | null>(null);
+  const [proposedRateInput, setProposedRateInput] = useState<string>('');
+  const [reasonInput, setReasonInput] = useState<string>('');
+  const [isSubmittingRateReq, setIsSubmittingRateReq] = useState<boolean>(false);
 
   // Print Modal
   const [selectedPoForPrint, setSelectedPoForPrint] = useState<PurchaseOrderFlow | null>(null);
@@ -225,6 +270,8 @@ export default function ProcurementPage() {
   const [bufferList, setBufferList] = useState<BufferStockPlanning[]>([]);
   const [reconciliationList, setReconciliationList] = useState<VendorReconciliation[]>([]);
   const [scrapList, setScrapList] = useState<ScrapDisposalManagement[]>([]);
+  const [rawMaterialsList, setRawMaterialsList] = useState<RawMaterialItem[]>([]);
+  const [rateRequestsList, setRateRequestsList] = useState<RawMaterialRateRequestItem[]>([]);
 
   // =========================================================================
   // LIFECYCLE & AUTH LOAD
@@ -263,13 +310,15 @@ export default function ProcurementPage() {
       };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const [resS, resP, resI, resB, resR, resSc] = await Promise.allSettled([
+      const [resS, resP, resI, resB, resR, resSc, resRm, resReq] = await Promise.allSettled([
         fetch(`${apiUrl}/procurement/sourcing`, { headers }).then((r) => (r.ok ? r.json() : [])),
         fetch(`${apiUrl}/procurement/purchase-orders`, { headers }).then((r) => (r.ok ? r.json() : [])),
         fetch(`${apiUrl}/procurement/inward`, { headers }).then((r) => (r.ok ? r.json() : [])),
         fetch(`${apiUrl}/procurement/buffer-stock`, { headers }).then((r) => (r.ok ? r.json() : [])),
         fetch(`${apiUrl}/procurement/reconciliations`, { headers }).then((r) => (r.ok ? r.json() : [])),
         fetch(`${apiUrl}/procurement/scrap`, { headers }).then((r) => (r.ok ? r.json() : [])),
+        fetch(`${apiUrl}/procurement/raw-materials`, { headers }).then((r) => (r.ok ? r.json() : [])),
+        fetch(`${apiUrl}/procurement/rate-requests`, { headers }).then((r) => (r.ok ? r.json() : [])),
       ]);
 
       setSourcingList(resS.status === 'fulfilled' && Array.isArray(resS.value) ? resS.value : []);
@@ -278,6 +327,8 @@ export default function ProcurementPage() {
       setBufferList(resB.status === 'fulfilled' && Array.isArray(resB.value) ? resB.value : []);
       setReconciliationList(resR.status === 'fulfilled' && Array.isArray(resR.value) ? resR.value : []);
       setScrapList(resSc.status === 'fulfilled' && Array.isArray(resSc.value) ? resSc.value : []);
+      setRawMaterialsList(resRm.status === 'fulfilled' && Array.isArray(resRm.value) ? resRm.value : []);
+      setRateRequestsList(resReq.status === 'fulfilled' && Array.isArray(resReq.value) ? resReq.value : []);
     } catch {
       setSourcingList([]);
       setPoList([]);
@@ -285,8 +336,75 @@ export default function ProcurementPage() {
       setBufferList([]);
       setReconciliationList([]);
       setScrapList([]);
+      setRawMaterialsList([]);
+      setRateRequestsList([]);
     }
   };
+
+  const handleOpenRateRequestModal = (material?: RawMaterialItem) => {
+    if (material) {
+      setSelectedMaterialForRequest(material);
+      setProposedRateInput(String(material.rate || material.unitPrice || material.costPrice || 0));
+    } else if (rawMaterialsList.length > 0) {
+      setSelectedMaterialForRequest(rawMaterialsList[0]);
+      setProposedRateInput(String(rawMaterialsList[0].rate || rawMaterialsList[0].unitPrice || rawMaterialsList[0].costPrice || 0));
+    } else {
+      setSelectedMaterialForRequest(null);
+      setProposedRateInput('');
+    }
+    setReasonInput('');
+    setIsNewRateRequestModal(true);
+  };
+
+  const handleSubmitRateRequest = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedMaterialForRequest) {
+      showToast('Please select a valid raw material.');
+      return;
+    }
+    const proposed = parseFloat(String(proposedRateInput));
+    if (isNaN(proposed) || proposed <= 0) {
+      showToast('Please enter a valid positive proposed rate.');
+      return;
+    }
+
+    setIsSubmittingRateReq(true);
+    try {
+      const token = localStorage.getItem('access_token') || localStorage.getItem('auth_token');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${apiUrl}/procurement/rate-requests`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          rawMaterialId: selectedMaterialForRequest.id,
+          proposedRate: proposed,
+          reason: reasonInput.trim() || undefined,
+        }),
+      });
+
+      if (res.ok) {
+        const created = await res.json();
+        setRateRequestsList((prev) => [created, ...prev]);
+        setIsNewRateRequestModal(false);
+        showToast('Rate change request submitted! Super Admin notification sent.');
+        fetchInitialProcurementData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.message || 'Failed to submit rate change request.');
+      }
+    } catch {
+      showToast('Failed to connect to backend server.');
+    } finally {
+      setIsSubmittingRateReq(false);
+    }
+  };
+
+  const pendingRateRequestsCount = useMemo(() => {
+    return rateRequestsList.filter((r) => r.status === 'PENDING').length;
+  }, [rateRequestsList]);
 
   const toggleTheme = () => {
     if (!isDark) {
@@ -831,6 +949,23 @@ export default function ProcurementPage() {
           </button>
           <button
             type="button"
+            onClick={() => setProcTab('rate_requests')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-bold transition-all whitespace-nowrap shrink-0 ${
+              procTab === 'rate_requests'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4 shrink-0" />
+            <span>2. Raw Material Rates &amp; Requests</span>
+            {pendingRateRequestsCount > 0 && (
+              <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-amber-500 text-white font-extrabold animate-pulse">
+                {pendingRateRequestsCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
             onClick={() => setProcTab('purchase_orders')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-bold transition-all whitespace-nowrap shrink-0 ${
               procTab === 'purchase_orders'
@@ -839,7 +974,7 @@ export default function ProcurementPage() {
             }`}
           >
             <ShoppingCart className="w-4 h-4 shrink-0" />
-            <span>2. PR to PO Processing</span>
+            <span>3. PR to PO Processing</span>
           </button>
           <button
             type="button"
@@ -851,7 +986,7 @@ export default function ProcurementPage() {
             }`}
           >
             <Truck className="w-4 h-4 shrink-0" />
-            <span>3. Material Inward &amp; Weighbridge</span>
+            <span>4. Material Inward &amp; Weighbridge</span>
           </button>
           <button
             type="button"
@@ -863,7 +998,7 @@ export default function ProcurementPage() {
             }`}
           >
             <Warehouse className="w-4 h-4 shrink-0" />
-            <span>4. Buffer Stock &amp; JIT Planning</span>
+            <span>5. Buffer Stock &amp; JIT Planning</span>
           </button>
           <button
             type="button"
@@ -875,7 +1010,7 @@ export default function ProcurementPage() {
             }`}
           >
             <Scale className="w-4 h-4 shrink-0" />
-            <span>5. 3-Way Match &amp; Debit Notes</span>
+            <span>6. 3-Way Match &amp; Debit Notes</span>
           </button>
           <button
             type="button"
@@ -887,7 +1022,7 @@ export default function ProcurementPage() {
             }`}
           >
             <Flame className="w-4 h-4 shrink-0" />
-            <span>6. Scrap Disposal Management</span>
+            <span>7. Scrap Disposal Management</span>
           </button>
         </div>
 
@@ -1069,7 +1204,277 @@ export default function ProcurementPage() {
         )}
 
         {/* ================================================================= */}
-        {/* TAB 2: PR TO PO PROCESSING */}
+        {/* TAB 2: RAW MATERIAL RATES & REQUESTS                              */}
+        {/* ================================================================= */}
+        {procTab === 'rate_requests' && (
+          <div className="space-y-6">
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-bold text-slate-600 dark:text-slate-400">Tracked Materials</span>
+                  <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600">
+                    <Package className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-3xl font-extrabold mt-3">{rawMaterialsList.length}</div>
+                <div className="text-sm text-slate-500 mt-1">Catalog items monitored</div>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-bold text-slate-600 dark:text-slate-400">Pending Approvals</span>
+                  <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-3xl font-extrabold mt-3 text-amber-600">{pendingRateRequestsCount}</div>
+                <div className="text-sm text-amber-600/80 font-medium mt-1">Awaiting Super Admin decision</div>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-bold text-slate-600 dark:text-slate-400">Approved Revisions</span>
+                  <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-3xl font-extrabold mt-3 text-emerald-600">
+                  {rateRequestsList.filter((r) => r.status === 'APPROVED').length}
+                </div>
+                <div className="text-sm text-emerald-600/80 font-medium mt-1">Auto-recalculated product costs</div>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-bold text-slate-600 dark:text-slate-400">Workflow Policy</span>
+                  <div className="p-2.5 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-sm font-extrabold mt-3 text-indigo-700 dark:text-indigo-300">
+                  Dual-Control Locked
+                </div>
+                <div className="text-xs text-slate-500 mt-1">Rate changes require Super Admin sign-off</div>
+              </div>
+            </div>
+
+            {/* Workflow Notice Banner */}
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
+              <div>
+                <span className="font-bold">Strict Cost-Governance Rule:</span> Procurement proposals do not directly modify inventory rates. When you submit a rate request, a real-time notification is routed to the Super Admin. Upon Super Admin approval, the raw material rate is updated and all linked product Bill-of-Materials (BOM) cost prices automatically recalculate.
+              </div>
+            </div>
+
+            {/* SECTION A: RAW MATERIALS CATALOG & RATE ACTIONS */}
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-extrabold">Active Raw Materials Catalog</h3>
+                  <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                    Select any raw material to submit an updated procurement quote or market rate change request.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenRateRequestModal()}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm shadow-sm transition-all whitespace-nowrap self-start sm:self-auto"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Request Rate Change</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                      <th className="px-5 py-3.5">Code / SKU</th>
+                      <th className="px-5 py-3.5">Material Name</th>
+                      <th className="px-5 py-3.5">Category</th>
+                      <th className="px-5 py-3.5 text-right">Current Stock</th>
+                      <th className="px-5 py-3.5 text-right">Active Approved Rate</th>
+                      <th className="px-5 py-3.5 text-center">Pending Request</th>
+                      <th className="px-5 py-3.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {rawMaterialsList.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-5 py-8 text-center text-slate-500">
+                          No raw materials found for this facility. Add raw materials via Super Admin or Inventory.
+                        </td>
+                      </tr>
+                    ) : (
+                      rawMaterialsList.map((rm) => {
+                        const activeRate = rm.rate ?? rm.unitPrice ?? rm.costPrice ?? 0;
+                        const pendingReq = rateRequestsList.find(
+                          (r) => r.rawMaterialId === rm.id && r.status === 'PENDING',
+                        );
+
+                        return (
+                          <tr key={rm.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                            <td className="px-5 py-4 font-mono font-bold text-xs text-amber-700 dark:text-amber-400">
+                              {rm.materialCode}
+                            </td>
+                            <td className="px-5 py-4 font-bold text-slate-900 dark:text-slate-100">
+                              {rm.name}
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                {rm.category}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-right font-mono text-slate-700 dark:text-slate-300">
+                              {rm.currentStock?.toLocaleString() || 0} {rm.unit}
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                              <span className="font-mono font-black text-slate-900 dark:text-white text-base">
+                                ₹{Number(activeRate).toFixed(2)}
+                              </span>
+                              <span className="text-xs text-slate-400 ml-1">/ {rm.unit}</span>
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              {pendingReq ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                                  <Clock className="w-3 h-3" />
+                                  Proposed: ₹{pendingReq.proposedRate}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400 font-medium">None</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenRateRequestModal(rm)}
+                                className="px-3.5 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-300 font-bold text-xs shadow-sm transition-all"
+                              >
+                                Request Rate Change
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* SECTION B: RATE REQUESTS AUDIT & STATUS TABLE */}
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800">
+                <h3 className="text-lg font-extrabold">Rate Change Request History &amp; Decisions</h3>
+                <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                  Complete audit log of rate revision proposals, Super Admin approvals, and rejections.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                      <th className="px-5 py-3.5">Material</th>
+                      <th className="px-5 py-3.5 text-right">Current Rate</th>
+                      <th className="px-5 py-3.5 text-right">Proposed Rate</th>
+                      <th className="px-5 py-3.5 text-right">Variance</th>
+                      <th className="px-5 py-3.5">Procurement Reason</th>
+                      <th className="px-5 py-3.5">Submission Date</th>
+                      <th className="px-5 py-3.5 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {rateRequestsList.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-5 py-8 text-center text-slate-500">
+                          No rate change requests recorded yet. Click "Request Rate Change" to submit one.
+                        </td>
+                      </tr>
+                    ) : (
+                      rateRequestsList.map((req) => {
+                        const cur = Number(req.currentRate || 0);
+                        const prop = Number(req.proposedRate || 0);
+                        const diff = prop - cur;
+                        const pct = cur > 0 ? (diff / cur) * 100 : 0;
+                        const isIncrease = diff > 0;
+
+                        return (
+                          <tr key={req.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                            <td className="px-5 py-4">
+                              <div className="font-bold text-slate-900 dark:text-white">
+                                {req.rawMaterial?.name || 'Raw Material'}
+                              </div>
+                              <div className="text-xs font-mono text-slate-400">
+                                {req.rawMaterial?.materialCode || req.rawMaterialId}
+                              </div>
+                            </td>
+                            <td className="px-5 py-4 text-right font-mono text-slate-600 dark:text-slate-400">
+                              ₹{cur.toFixed(2)}
+                            </td>
+                            <td className="px-5 py-4 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                              ₹{prop.toFixed(2)}
+                            </td>
+                            <td className="px-5 py-4 text-right font-mono">
+                              <span
+                                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs font-bold ${
+                                  diff === 0
+                                    ? 'bg-slate-100 text-slate-700'
+                                    : isIncrease
+                                    ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                                    : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                                }`}
+                              >
+                                {isIncrease ? '+' : ''}
+                                {diff.toFixed(2)} ({isIncrease ? '+' : ''}
+                                {pct.toFixed(1)}%)
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-slate-700 dark:text-slate-300 max-w-xs">
+                              <p className="line-clamp-2 text-xs">{req.reason || 'Procurement market update'}</p>
+                              {req.rejectionReason && (
+                                <p className="text-xs text-red-600 font-semibold mt-1">
+                                  Super Admin: {req.rejectionReason}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-5 py-4 text-xs text-slate-500 whitespace-nowrap">
+                              {new Date(req.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              {req.status === 'PENDING' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                  <Clock className="w-3.5 h-3.5" />
+                                  Pending Approval
+                                </span>
+                              )}
+                              {req.status === 'APPROVED' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Approved &amp; Recalculated
+                                </span>
+                              )}
+                              {req.status === 'REJECTED' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300 border border-red-300 dark:border-red-800">
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  Rejected
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 3: PR TO PO PROCESSING */}
         {/* ================================================================= */}
         {procTab === 'purchase_orders' && (
           <div className="space-y-6">
@@ -2752,7 +3157,150 @@ export default function ProcurementPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* 7. PRINTABLE OFFICIAL PURCHASE ORDER MODAL */}
+      {/* 7. MODAL: REQUEST RAW MATERIAL RATE CHANGE (PROCUREMENT TO SUPER ADMIN)   */}
+      {/* ========================================================================= */}
+      {isNewRateRequestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <TrendingUp className="w-6 h-6 text-amber-600" />
+                <h3 className="text-xl font-extrabold">Propose Raw Material Rate Change</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNewRateRequestModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitRateRequest} className="mt-5 space-y-4 text-base">
+              <div>
+                <label className="block font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">
+                  Select Raw Material *
+                </label>
+                <select
+                  value={selectedMaterialForRequest?.id || ''}
+                  onChange={(e) => {
+                    const found = rawMaterialsList.find((m) => m.id === e.target.value);
+                    if (found) {
+                      setSelectedMaterialForRequest(found);
+                      setProposedRateInput(String(found.rate || found.unitPrice || found.costPrice || 0));
+                    }
+                  }}
+                  required
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold"
+                >
+                  <option value="" disabled>-- Select a Raw Material --</option>
+                  {rawMaterialsList.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.materialCode}) - Current: ₹{m.rate ?? m.unitPrice ?? m.costPrice ?? 0}/{m.unit}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedMaterialForRequest && (
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs text-slate-500 font-semibold uppercase">Active Approved Rate</div>
+                    <div className="text-lg font-black font-mono text-slate-900 dark:text-white">
+                      ₹{Number(selectedMaterialForRequest.rate ?? selectedMaterialForRequest.unitPrice ?? 0).toFixed(2)}
+                      <span className="text-xs font-normal text-slate-400 ml-1">/ {selectedMaterialForRequest.unit}</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-slate-500 font-semibold uppercase">Category / Stock</div>
+                    <div className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                      {selectedMaterialForRequest.category} ({selectedMaterialForRequest.currentStock} {selectedMaterialForRequest.unit})
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">
+                  Proposed New Rate (₹ per unit) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={proposedRateInput}
+                  onChange={(e) => setProposedRateInput(e.target.value)}
+                  placeholder="e.g. 52000.00"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-lg"
+                />
+                {selectedMaterialForRequest && proposedRateInput && !isNaN(parseFloat(proposedRateInput)) && (
+                  <div className="mt-1.5 text-xs flex items-center gap-2">
+                    <span className="text-slate-500">Rate variance:</span>
+                    {(() => {
+                      const cur = Number(selectedMaterialForRequest.rate ?? selectedMaterialForRequest.unitPrice ?? 0);
+                      const prop = parseFloat(proposedRateInput);
+                      const diff = prop - cur;
+                      const pct = cur > 0 ? (diff / cur) * 100 : 0;
+                      return (
+                        <span
+                          className={`font-mono font-bold ${
+                            diff > 0 ? 'text-amber-600' : diff < 0 ? 'text-emerald-600' : 'text-slate-500'
+                          }`}
+                        >
+                          {diff >= 0 ? '+' : ''}₹{diff.toFixed(2)} ({diff >= 0 ? '+' : ''}
+                          {pct.toFixed(2)}%)
+                        </span>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block font-bold text-sm text-slate-700 dark:text-slate-300 mb-1">
+                  Procurement Justification / Market Fluctuation Reason *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={reasonInput}
+                  onChange={(e) => setReasonInput(e.target.value)}
+                  placeholder="Detail vendor quotation revision, commodity index movement, supply chain constraints, or renegotiated contract terms..."
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Notice: Submitting will notify Super Admin. The active rate and BOM cost prices will update ONLY once approved by Super Admin.
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsNewRateRequestModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingRateReq}
+                  className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold inline-flex items-center gap-2"
+                >
+                  {isSubmittingRateReq && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  <span>Submit Rate Request</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 8. PRINTABLE OFFICIAL PURCHASE ORDER MODAL */}
       {/* ========================================================================= */}
       {selectedPoForPrint && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">

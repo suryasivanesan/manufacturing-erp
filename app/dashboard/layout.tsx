@@ -39,6 +39,7 @@ export default function DashboardLayout({
   const [isDark, setIsDark] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<UserPayload | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
 
   useEffect(() => {
     setMounted(true);
@@ -76,6 +77,18 @@ export default function DashboardLayout({
           if (data) {
             setCurrentUser(data);
             localStorage.setItem('auth_user', JSON.stringify(data));
+          }
+        })
+        .catch(() => {});
+
+      // Fetch pending rate change notifications for Super Admin
+      fetch(`${apiUrl}/super-admin/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && typeof data.unreadCount === 'number') {
+            setUnreadNotifCount(data.unreadCount);
           }
         })
         .catch(() => {});
@@ -147,8 +160,11 @@ export default function DashboardLayout({
           name: 'Super Admin Portal',
           href: '/dashboard/super-admin',
           icon: ShieldAlert,
-          badge: 'Control',
-          badgeColor: 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300',
+          badge: unreadNotifCount > 0 ? `${unreadNotifCount} Alerts` : 'Control',
+          badgeColor:
+            unreadNotifCount > 0
+              ? 'bg-rose-500 text-white font-extrabold animate-pulse'
+              : 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300',
           exact: true,
         },
 

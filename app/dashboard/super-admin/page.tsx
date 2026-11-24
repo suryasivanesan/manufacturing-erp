@@ -34,6 +34,11 @@ import {
   Activity,
   Award,
   Landmark,
+  Bell,
+  XCircle,
+  AlertTriangle,
+  Edit3,
+  Check,
 } from 'lucide-react';
 import { UserPayload } from '../../../types/auth';
 
@@ -44,6 +49,8 @@ interface RawMaterialItem {
   category: string;
   costPrice: number;
   sellingPrice: number;
+  rate?: number;
+  unitPrice?: number;
   unit: string;
   currentStock: number;
   reorderLevel: number;
@@ -62,6 +69,55 @@ interface ProductItem {
   currentStock: number;
   minStockLevel: number;
   status: string;
+  profitMarginAmount?: number;
+  profitMarginPercentage?: number;
+  bomComponents?: Array<{
+    id: string;
+    rawMaterialId: string;
+    name: string;
+    materialCode: string;
+    rate: number;
+    unit: string;
+    quantity: number;
+    scrapFactor: number;
+    lineCost: number;
+  }>;
+}
+
+interface NotificationItem {
+  id: string;
+  companyId: string;
+  recipientRole: string;
+  title: string;
+  message: string;
+  type: string;
+  referenceId?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+interface RateRequestItem {
+  id: string;
+  companyId: string;
+  rawMaterialId: string;
+  rawMaterial?: {
+    id: string;
+    name: string;
+    materialCode: string;
+    unit: string;
+    rate?: number;
+    unitPrice?: number;
+    costPrice?: number;
+  };
+  requestedByUserId?: string;
+  currentRate: number;
+  proposedRate: number;
+  reason?: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  createdAt: string;
 }
 
 interface PayrollItem {
@@ -99,9 +155,9 @@ export default function SuperAdminDashboardPage() {
   const [isDark, setIsDark] = useState<boolean>(false);
   const [mounted, setMounted] = useState<boolean>(false);
 
-  // Active Tab: 'analytics' | 'raw_materials' | 'products' | 'payroll' | 'export' | 'rbac' | 'audit'
+  // Active Tab: 'analytics' | 'rate_approvals' | 'raw_materials' | 'products' | 'payroll' | 'export' | 'rbac' | 'audit'
   const [activeTab, setActiveTab] = useState<
-    'analytics' | 'raw_materials' | 'products' | 'payroll' | 'export' | 'rbac' | 'audit'
+    'analytics' | 'rate_approvals' | 'raw_materials' | 'products' | 'payroll' | 'export' | 'rbac' | 'audit'
   >('analytics');
 
   // Authenticated Tenant State
@@ -116,6 +172,31 @@ export default function SuperAdminDashboardPage() {
   const [payrolls, setPayrolls] = useState<PayrollItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
+
+  // Rate Change Requests & Notifications State
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
+  const [rateRequests, setRateRequests] = useState<RateRequestItem[]>([]);
+  const [pricingOverview, setPricingOverview] = useState<ProductItem[]>([]);
+
+  // Approval / Rejection Modal States
+  const [selectedRateRequest, setSelectedRateRequest] = useState<RateRequestItem | null>(null);
+  const [customApprovedRate, setCustomApprovedRate] = useState<string>('');
+  const [rejectionReasonInput, setRejectionReasonInput] = useState<string>('');
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState<boolean>(false);
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState<boolean>(false);
+
+  // Direct Raw Material Rate Override Modal
+  const [selectedRmForRateEdit, setSelectedRmForRateEdit] = useState<RawMaterialItem | null>(null);
+  const [directRateInput, setDirectRateInput] = useState<string>('');
+  const [directRateReason, setDirectRateReason] = useState<string>('');
+  const [isDirectRateModalOpen, setIsDirectRateModalOpen] = useState<boolean>(false);
+
+  // Selling Price Quick Edit State
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [editingSellingPrice, setEditingSellingPrice] = useState<string>('');
+  const [isUpdatingPrice, setIsUpdatingPrice] = useState<boolean>(false);
+  const [expandedBomProductId, setExpandedBomProductId] = useState<string | null>(null);
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -199,13 +280,43 @@ export default function SuperAdminDashboardPage() {
           setRawMaterials(Array.isArray(rmData) ? rmData : []);
         }
 
-        // Fetch Products
-        const prdRes = await fetch(`${apiUrl}/super-admin/products`, {
+        // Fetch Products with Pricing Overview & BOM
+        const pricingRes = await fetch(`${apiUrl}/super-admin/products/pricing-overview`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (prdRes.ok) {
-          const prdData = await prdRes.json();
-          setProducts(Array.isArray(prdData) ? prdData : []);
+        if (pricingRes.ok) {
+          const pricingData = await pricingRes.json();
+          const pList = Array.isArray(pricingData) ? pricingData : [];
+          setPricingOverview(pList);
+          setProducts(pList);
+        } else {
+          // Fallback fetch products
+          const prdRes = await fetch(`${apiUrl}/super-admin/products`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (prdRes.ok) {
+            const prdData = await prdRes.json();
+            setProducts(Array.isArray(prdData) ? prdData : []);
+          }
+        }
+
+        // Fetch Notifications
+        const notifRes = await fetch(`${apiUrl}/super-admin/notifications`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (notifRes.ok) {
+          const notifData = await notifRes.json();
+          setNotifications(Array.isArray(notifData?.notifications) ? notifData.notifications : []);
+          setUnreadNotifCount(typeof notifData?.unreadCount === 'number' ? notifData.unreadCount : 0);
+        }
+
+        // Fetch Rate Requests
+        const reqRes = await fetch(`${apiUrl}/super-admin/rate-requests`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (reqRes.ok) {
+          const reqData = await reqRes.json();
+          setRateRequests(Array.isArray(reqData) ? reqData : []);
         }
 
         // Fetch Payrolls
@@ -236,7 +347,6 @@ export default function SuperAdminDashboardPage() {
           setEmployees(uList);
         }
       } else {
-        // Fallback default state for development
         seedLocalState();
       }
     } catch {
@@ -252,6 +362,211 @@ export default function SuperAdminDashboardPage() {
     setPayrolls([]);
     setAuditLogs([]);
     setEmployees([]);
+    setNotifications([]);
+    setUnreadNotifCount(0);
+    setRateRequests([]);
+    setPricingOverview([]);
+  };
+
+  // =========================================================================
+  // ACTIONS: RATE CHANGE REQUESTS & APPROVALS WORKFLOW
+  // =========================================================================
+
+  const handleApproveRateRequest = async (request: RateRequestItem, customRate?: number) => {
+    const token = localStorage.getItem('access_token');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const rateToApprove = customRate !== undefined ? customRate : request.proposedRate;
+
+    try {
+      const res = await fetch(`${apiUrl}/super-admin/rate-requests/${request.id}/approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ approvedRate: rateToApprove }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setFeedbackSuccess(
+          `Approved rate request for ${request.rawMaterial?.name || 'Raw Material'} at ₹${rateToApprove}. Recalculated cost prices for ${data.affectedProductsCount} products!`,
+        );
+        setIsApprovalModalOpen(false);
+        setSelectedRateRequest(null);
+        loadInitialData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setFeedbackError(err.message || 'Failed to approve rate change request.');
+      }
+    } catch {
+      setFeedbackError('Network error approving rate change request.');
+    }
+  };
+
+  const handleRejectRateRequest = async (request: RateRequestItem, reason?: string) => {
+    const token = localStorage.getItem('access_token');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+    try {
+      const res = await fetch(`${apiUrl}/super-admin/rate-requests/${request.id}/reject`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ rejectionReason: reason || rejectionReasonInput }),
+      });
+
+      if (res.ok) {
+        setFeedbackSuccess(`Rate change request for ${request.rawMaterial?.name || 'Raw Material'} rejected.`);
+        setIsRejectModalOpen(false);
+        setSelectedRateRequest(null);
+        setRejectionReasonInput('');
+        loadInitialData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setFeedbackError(err.message || 'Failed to reject rate change request.');
+      }
+    } catch {
+      setFeedbackError('Network error rejecting rate change request.');
+    }
+  };
+
+  const handleDirectRateOverride = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRmForRateEdit) return;
+    const newRate = parseFloat(directRateInput);
+    if (isNaN(newRate) || newRate < 0) {
+      setFeedbackError('Please enter a valid non-negative rate.');
+      return;
+    }
+
+    const token = localStorage.getItem('access_token');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+    try {
+      const res = await fetch(`${apiUrl}/super-admin/raw-materials/${selectedRmForRateEdit.id}/rate`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          rate: newRate,
+          reason: directRateReason || 'Super Admin direct rate override',
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setFeedbackSuccess(
+          `Raw material ${selectedRmForRateEdit.name} rate updated to ₹${newRate}. Recalculated cost prices for ${data.affectedProductsCount} products.`,
+        );
+        setIsDirectRateModalOpen(false);
+        setSelectedRmForRateEdit(null);
+        setDirectRateInput('');
+        setDirectRateReason('');
+        loadInitialData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setFeedbackError(err.message || 'Failed to override raw material rate.');
+      }
+    } catch {
+      setFeedbackError('Network error overriding rate.');
+    }
+  };
+
+  const handleSaveProductSellingPrice = async (productId: string) => {
+    const newPrice = parseFloat(editingSellingPrice);
+    if (isNaN(newPrice) || newPrice < 0) {
+      setFeedbackError('Please enter a valid non-negative selling price.');
+      return;
+    }
+
+    setIsUpdatingPrice(true);
+    const token = localStorage.getItem('access_token');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+    try {
+      const res = await fetch(`${apiUrl}/super-admin/products/${productId}/pricing`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sellingPrice: newPrice }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setFeedbackSuccess(
+          `Selling price for ${data.name} updated to ₹${data.sellingPrice.toLocaleString()}. Margin: ${data.profitMarginPercentage}% (₹${data.profitMarginAmount.toLocaleString()}).`,
+        );
+        setEditingProductId(null);
+        setEditingSellingPrice('');
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === productId
+              ? {
+                  ...p,
+                  sellingPrice: data.sellingPrice,
+                  costPrice: data.costPrice,
+                  profitMarginAmount: data.profitMarginAmount,
+                  profitMarginPercentage: data.profitMarginPercentage,
+                }
+              : p,
+          ),
+        );
+        setPricingOverview((prev) =>
+          prev.map((p) =>
+            p.id === productId
+              ? {
+                  ...p,
+                  sellingPrice: data.sellingPrice,
+                  costPrice: data.costPrice,
+                  profitMarginAmount: data.profitMarginAmount,
+                  profitMarginPercentage: data.profitMarginPercentage,
+                }
+              : p,
+          ),
+        );
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setFeedbackError(err.message || 'Failed to update selling price.');
+      }
+    } catch {
+      setFeedbackError('Network error updating product price.');
+    } finally {
+      setIsUpdatingPrice(false);
+    }
+  };
+
+  const handleMarkNotificationRead = async (id: string) => {
+    const token = localStorage.getItem('access_token');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    try {
+      await fetch(`${apiUrl}/super-admin/notifications/${id}/read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+      setUnreadNotifCount((prev) => Math.max(0, prev - 1));
+    } catch {}
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    const token = localStorage.getItem('access_token');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    try {
+      await fetch(`${apiUrl}/super-admin/notifications/read-all`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadNotifCount(0);
+      setFeedbackSuccess('All notifications marked as read.');
+    } catch {}
   };
 
   // Facility Info
@@ -680,13 +995,23 @@ export default function SuperAdminDashboardPage() {
                 <span>Dashboard</span>
               </Link>
 
-              <Link
-                href="/dashboard/super-admin/approvals"
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-sm font-bold text-amber-800 dark:text-amber-300 shadow-sm whitespace-nowrap shrink-0"
+              <button
+                type="button"
+                onClick={() => setActiveTab('rate_approvals')}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm font-bold shadow-sm whitespace-nowrap shrink-0 transition-all ${
+                  activeTab === 'rate_approvals'
+                    ? 'border-amber-500 bg-amber-600 text-white'
+                    : 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-800 dark:text-amber-300'
+                }`}
               >
-                <ShieldAlert className="w-4 h-4 text-amber-600" />
-                <span>Approvals</span>
-              </Link>
+                <ShieldAlert className="w-4 h-4" />
+                <span>Rate Approvals</span>
+                {unreadNotifCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-rose-500 text-white font-extrabold animate-pulse">
+                    {unreadNotifCount}
+                  </span>
+                )}
+              </button>
 
               <Link
                 href="/dashboard/executive"
@@ -781,6 +1106,24 @@ export default function SuperAdminDashboardPage() {
             >
               <BarChart3 className="w-4 h-4" />
               <span>Turnover &amp; P&amp;L Charts</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('rate_approvals')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-bold transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'rate_approvals'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <ShieldAlert className="w-4 h-4 text-amber-500" />
+              <span>Rate Approvals &amp; Alerts</span>
+              {unreadNotifCount > 0 && (
+                <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-rose-500 text-white font-black animate-pulse">
+                  {unreadNotifCount}
+                </span>
+              )}
             </button>
 
             <button
@@ -1024,6 +1367,328 @@ export default function SuperAdminDashboardPage() {
         )}
 
         {/* =================================================================== */}
+        {/* TAB: RATE APPROVALS & NOTIFICATIONS (SUPER ADMIN DUAL CONTROL)      */}
+        {/* =================================================================== */}
+        {activeTab === 'rate_approvals' && (
+          <main className="max-w-7xl mx-auto px-6 py-6 space-y-6 w-full">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-3 py-0.5 rounded-full text-xs font-black bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                    DUAL-CONTROL COST GOVERNANCE
+                  </span>
+                  {unreadNotifCount > 0 && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500 text-white animate-pulse">
+                      {unreadNotifCount} Unread Alerts
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white">
+                  Procurement Rate Change Requests &amp; Alerts
+                </h2>
+                <p className="text-base text-slate-500">
+                  Review market rate adjustments requested by procurement. Approving updates active inventory valuation and automatically recalculates Cost Prices for all products consuming that raw material in {companyName}.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (rawMaterials.length > 0) {
+                      setSelectedRmForRateEdit(rawMaterials[0]);
+                      setDirectRateInput(String(rawMaterials[0].rate ?? rawMaterials[0].costPrice ?? 0));
+                    }
+                    setDirectRateReason('');
+                    setIsDirectRateModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm shadow-sm transition-all"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  <span>Direct Rate Override</span>
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-slate-500">Pending Requests</span>
+                  <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-3xl font-black mt-2 text-amber-600">
+                  {rateRequests.filter((r) => r.status === 'PENDING').length}
+                </div>
+                <div className="text-xs text-slate-400 mt-1">Awaiting Super Admin review</div>
+              </div>
+
+              <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-slate-500">Unread Alerts</span>
+                  <div className="p-2 rounded-xl bg-rose-100 dark:bg-rose-900/40 text-rose-600">
+                    <Bell className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-3xl font-black mt-2 text-rose-600">{unreadNotifCount}</div>
+                <div className="text-xs text-slate-400 mt-1 flex items-center justify-between">
+                  <span>New notifications</span>
+                  {unreadNotifCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAllNotificationsRead}
+                      className="text-blue-600 hover:underline font-bold text-xs"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-slate-500">Approved Revisions</span>
+                  <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-3xl font-black mt-2 text-emerald-600">
+                  {rateRequests.filter((r) => r.status === 'APPROVED').length}
+                </div>
+                <div className="text-xs text-slate-400 mt-1">Cost prices updated &amp; live</div>
+              </div>
+
+              <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-slate-500">Products Recalculated</span>
+                  <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600">
+                    <Factory className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-3xl font-black mt-2 text-blue-600">{products.length}</div>
+                <div className="text-xs text-slate-400 mt-1">Active BOM catalogue items</div>
+              </div>
+            </div>
+
+            {/* Rate Change Requests Table */}
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                    Procurement Rate Requests Review Panel
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                    Click "Approve" to accept the proposed rate and trigger automatic recalculation of affected product cost prices.
+                  </p>
+                </div>
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                  {rateRequests.length} Total Requests
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="p-4">Raw Material</th>
+                      <th className="p-4 text-right">Active Rate</th>
+                      <th className="p-4 text-right">Proposed Rate</th>
+                      <th className="p-4 text-right">Price Variance</th>
+                      <th className="p-4">Procurement Justification</th>
+                      <th className="p-4">Requested On</th>
+                      <th className="p-4 text-center">Status</th>
+                      <th className="p-4 text-right">Decision Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                    {rateRequests.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-500">
+                          No rate change requests submitted yet. Procurement requests will appear here for executive approval.
+                        </td>
+                      </tr>
+                    ) : (
+                      rateRequests.map((req) => {
+                        const cur = Number(req.currentRate || 0);
+                        const prop = Number(req.proposedRate || 0);
+                        const diff = prop - cur;
+                        const pct = cur > 0 ? (diff / cur) * 100 : 0;
+                        const isIncrease = diff > 0;
+
+                        return (
+                          <tr key={req.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                            <td className="p-4">
+                              <div className="font-bold text-slate-900 dark:text-white">
+                                {req.rawMaterial?.name || 'Raw Material'}
+                              </div>
+                              <div className="text-xs font-mono text-slate-400">
+                                {req.rawMaterial?.materialCode || req.rawMaterialId}
+                              </div>
+                            </td>
+                            <td className="p-4 text-right font-mono text-slate-600 dark:text-slate-400">
+                              ₹{cur.toFixed(2)}
+                            </td>
+                            <td className="p-4 text-right font-mono font-black text-slate-900 dark:text-white">
+                              ₹{prop.toFixed(2)}
+                            </td>
+                            <td className="p-4 text-right font-mono">
+                              <span
+                                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs font-bold ${
+                                  diff === 0
+                                    ? 'bg-slate-100 text-slate-700'
+                                    : isIncrease
+                                    ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                                    : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                                }`}
+                              >
+                                {isIncrease ? '+' : ''}
+                                {diff.toFixed(2)} ({isIncrease ? '+' : ''}
+                                {pct.toFixed(1)}%)
+                              </span>
+                            </td>
+                            <td className="p-4 max-w-xs text-xs text-slate-600 dark:text-slate-300">
+                              <p className="line-clamp-2">{req.reason || 'Procurement rate change'}</p>
+                              {req.rejectionReason && (
+                                <p className="text-xs text-red-600 font-bold mt-1">
+                                  Rejection: {req.rejectionReason}
+                                </p>
+                              )}
+                            </td>
+                            <td className="p-4 text-xs text-slate-500 whitespace-nowrap">
+                              {new Date(req.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="p-4 text-center">
+                              {req.status === 'PENDING' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                  <Clock className="w-3.5 h-3.5" />
+                                  Pending Review
+                                </span>
+                              )}
+                              {req.status === 'APPROVED' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Approved &amp; Recalculated
+                                </span>
+                              )}
+                              {req.status === 'REJECTED' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300 border border-red-300 dark:border-red-800">
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  Rejected
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-4 text-right">
+                              {req.status === 'PENDING' ? (
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedRateRequest(req);
+                                      setCustomApprovedRate(String(req.proposedRate));
+                                      setIsApprovalModalOpen(true);
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all"
+                                  >
+                                    Approve Rate
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedRateRequest(req);
+                                      setRejectionReasonInput('');
+                                      setIsRejectModalOpen(true);
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 text-red-700 dark:text-red-300 font-bold text-xs transition-all"
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-slate-400 font-semibold">Processed</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Notifications Feed */}
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Bell className="w-5 h-5 text-amber-600" />
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                    Live System &amp; Procurement Notifications
+                  </h3>
+                </div>
+                {unreadNotifCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleMarkAllNotificationsRead}
+                    className="text-xs text-blue-600 hover:underline font-bold"
+                  >
+                    Mark All Read
+                  </button>
+                )}
+              </div>
+
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {notifications.length === 0 ? (
+                  <div className="p-6 text-center text-slate-500 text-sm">
+                    No notifications recorded for this facility yet.
+                  </div>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`p-4 flex items-start justify-between gap-4 transition-colors ${
+                        !n.isRead ? 'bg-amber-50/60 dark:bg-amber-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${
+                            !n.isRead ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
+                          }`}
+                        />
+                        <div>
+                          <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                            <span>{n.title}</span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                              {n.type}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">{n.message}</p>
+                          <span className="text-[10px] text-slate-400 mt-1 block">
+                            {new Date(n.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {!n.isRead && (
+                        <button
+                          type="button"
+                          onClick={() => handleMarkNotificationRead(n.id)}
+                          className="px-2.5 py-1 rounded text-xs font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap shrink-0"
+                        >
+                          Mark Read
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </main>
+        )}
+
+        {/* =================================================================== */}
         {/* TAB 2: RAW MATERIALS MANAGEMENT                                     */}
         {/* =================================================================== */}
         {activeTab === 'raw_materials' && (
@@ -1055,7 +1720,7 @@ export default function SuperAdminDashboardPage() {
                     <th className="p-4">Material Code</th>
                     <th className="p-4">Material Name</th>
                     <th className="p-4">Category</th>
-                    <th className="p-4">Inward Cost</th>
+                    <th className="p-4">Approved Rate (₹)</th>
                     <th className="p-4">Valuation Price</th>
                     <th className="p-4">Unit</th>
                     <th className="p-4">Current Stock</th>
@@ -1064,38 +1729,61 @@ export default function SuperAdminDashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                  {rawMaterials.map((rm) => (
-                    <tr key={rm.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                      <td className="p-4 font-mono font-bold text-blue-600">{rm.materialCode}</td>
-                      <td className="p-4 font-bold text-slate-900 dark:text-white">{rm.name}</td>
-                      <td className="p-4 text-slate-500">{rm.category}</td>
-                      <td className="p-4 font-mono font-semibold">₹{rm.costPrice.toLocaleString()}</td>
-                      <td className="p-4 font-mono font-semibold text-emerald-600">₹{rm.sellingPrice.toLocaleString()}</td>
-                      <td className="p-4 font-bold">{rm.unit}</td>
-                      <td className="p-4 font-mono font-bold">{rm.currentStock.toLocaleString()}</td>
-                      <td className="p-4">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                            rm.currentStock >= rm.reorderLevel
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
-                          }`}
-                        >
-                          {rm.currentStock >= rm.reorderLevel ? 'IN_STOCK' : 'REORDER_ALERT'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteRawMaterial(rm.id)}
-                          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Remove Material"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {rawMaterials.map((rm) => {
+                    const activeRate = rm.rate ?? rm.unitPrice ?? rm.costPrice ?? 0;
+                    return (
+                      <tr key={rm.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                        <td className="p-4 font-mono font-bold text-blue-600">{rm.materialCode}</td>
+                        <td className="p-4 font-bold text-slate-900 dark:text-white">{rm.name}</td>
+                        <td className="p-4 text-slate-500">{rm.category}</td>
+                        <td className="p-4 font-mono font-bold text-slate-900 dark:text-white">
+                          ₹{Number(activeRate).toFixed(2)}
+                        </td>
+                        <td className="p-4 font-mono font-semibold text-emerald-600">
+                          ₹{rm.sellingPrice ? rm.sellingPrice.toLocaleString() : Number(activeRate).toFixed(2)}
+                        </td>
+                        <td className="p-4 font-bold">{rm.unit}</td>
+                        <td className="p-4 font-mono font-bold">{rm.currentStock.toLocaleString()}</td>
+                        <td className="p-4">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                              rm.currentStock >= rm.reorderLevel
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
+                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                            }`}
+                          >
+                            {rm.currentStock >= rm.reorderLevel ? 'IN_STOCK' : 'REORDER_ALERT'}
+                          </span>
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedRmForRateEdit(rm);
+                                setDirectRateInput(String(rm.rate ?? rm.costPrice ?? 0));
+                                setDirectRateReason('');
+                                setIsDirectRateModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-800 dark:text-amber-300 text-xs font-bold transition-all"
+                              title="Direct Rate Override (Auto-recalculates products)"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Edit Rate</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRawMaterial(rm.id)}
+                              className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              title="Remove Material"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1103,17 +1791,17 @@ export default function SuperAdminDashboardPage() {
         )}
 
         {/* =================================================================== */}
-        {/* TAB 3: FINISHED PRODUCTS CATALOG                                    */}
+        {/* TAB 3: FINISHED PRODUCTS & PROFIT MARGIN CONFIGURATION              */}
         {/* =================================================================== */}
         {activeTab === 'products' && (
           <main className="max-w-7xl mx-auto px-6 py-6 space-y-6 w-full">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-black text-slate-900 dark:text-white">
-                  Finished Products &amp; SKU Catalog
+                  Finished Products &amp; Profit Margin Architecture
                 </h2>
                 <p className="text-base text-slate-500">
-                  Configure manufacturing unit costs and sales pricing with strict company multi-tenant protection.
+                  Dual-governance pricing: Cost Price is automatically derived from procurement raw material BOM rates. Super Admin configures Selling Price to lock in target margins.
                 </p>
               </div>
 
@@ -1134,40 +1822,208 @@ export default function SuperAdminDashboardPage() {
                     <th className="p-4">SKU Code</th>
                     <th className="p-4">Product Name</th>
                     <th className="p-4">Category</th>
-                    <th className="p-4">Mfg Cost</th>
-                    <th className="p-4">Sales Price</th>
-                    <th className="p-4">Margin %</th>
-                    <th className="p-4">Unit</th>
-                    <th className="p-4">Current Stock</th>
+                    <th className="p-4 text-right">Cost Price (Auto-BOM)</th>
+                    <th className="p-4 text-right">Selling Price (Configurable)</th>
+                    <th className="p-4 text-right">Profit Margin</th>
+                    <th className="p-4">Unit &amp; Stock</th>
                     <th className="p-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                  {products.map((p) => {
-                    const margin = p.sellingPrice > 0 ? (((p.sellingPrice - p.costPrice) / p.sellingPrice) * 100).toFixed(1) : '0';
-                    return (
-                      <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                        <td className="p-4 font-mono font-bold text-blue-600">{p.sku}</td>
-                        <td className="p-4 font-bold text-slate-900 dark:text-white">{p.name}</td>
-                        <td className="p-4 text-slate-500">{p.category}</td>
-                        <td className="p-4 font-mono font-semibold">₹{p.costPrice.toLocaleString()}</td>
-                        <td className="p-4 font-mono font-bold text-emerald-600">₹{p.sellingPrice.toLocaleString()}</td>
-                        <td className="p-4 font-bold text-blue-600">{margin}%</td>
-                        <td className="p-4 font-bold">{p.unit}</td>
-                        <td className="p-4 font-mono font-bold">{p.currentStock.toLocaleString()}</td>
-                        <td className="p-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteProduct(p.id)}
-                            className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            title="Remove Product"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {products.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-slate-500">
+                        No finished products registered. Click "Register Product SKU" to add products to your catalog.
+                      </td>
+                    </tr>
+                  ) : (
+                    products.map((p) => {
+                      const cost = Number(p.costPrice || 0);
+                      const selling = Number(p.sellingPrice || 0);
+                      const marginAmt = p.profitMarginAmount !== undefined ? p.profitMarginAmount : Number((selling - cost).toFixed(2));
+                      const marginPct =
+                        p.profitMarginPercentage !== undefined
+                          ? p.profitMarginPercentage
+                          : cost > 0
+                          ? Number((((selling - cost) / cost) * 100).toFixed(1))
+                          : 0;
+                      const isProfitable = marginAmt >= 0;
+                      const isEditingThis = editingProductId === p.id;
+                      const isExpanded = expandedBomProductId === p.id;
+                      const hasBom = Array.isArray(p.bomComponents) && p.bomComponents.length > 0;
+
+                      return (
+                        <React.Fragment key={p.id}>
+                          <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                            <td className="p-4 font-mono font-bold text-blue-600">{p.sku}</td>
+                            <td className="p-4">
+                              <div className="font-bold text-slate-900 dark:text-white">{p.name}</div>
+                              {hasBom && (
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedBomProductId(isExpanded ? null : p.id)}
+                                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 mt-0.5"
+                                >
+                                  <Layers className="w-3 h-3" />
+                                  <span>{isExpanded ? 'Hide BOM Details' : `View BOM (${p.bomComponents?.length} items)`}</span>
+                                </button>
+                              )}
+                            </td>
+                            <td className="p-4 text-slate-500">{p.category}</td>
+                            <td className="p-4 text-right font-mono">
+                              <div className="font-bold text-slate-900 dark:text-white">
+                                ₹{cost.toFixed(2)}
+                              </div>
+                              <span className="inline-block text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                                Auto-Calculated
+                              </span>
+                            </td>
+                            <td className="p-4 text-right font-mono">
+                              {isEditingThis ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={editingSellingPrice}
+                                    onChange={(e) => setEditingSellingPrice(e.target.value)}
+                                    className="w-28 p-1.5 rounded-lg border border-blue-500 bg-white dark:bg-slate-800 font-mono text-sm text-right"
+                                    autoFocus
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={isUpdatingPrice}
+                                    onClick={() => handleSaveProductSellingPrice(p.id)}
+                                    className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                                    title="Save Selling Price"
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingProductId(null)}
+                                    className="p-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                                    title="Cancel"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1.5 group">
+                                  <span className="font-black text-emerald-600 text-base">
+                                    ₹{selling.toFixed(2)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingProductId(p.id);
+                                      setEditingSellingPrice(String(p.sellingPrice || 0));
+                                    }}
+                                    className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                    title="Edit Selling Price"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-4 text-right font-mono">
+                              <div className={`font-bold ${isProfitable ? 'text-emerald-600' : 'text-red-500'}`}>
+                                {isProfitable ? '+' : ''}₹{marginAmt.toFixed(2)}
+                              </div>
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
+                                  isProfitable
+                                    ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
+                                }`}
+                              >
+                                {isProfitable ? '+' : ''}
+                                {marginPct}%
+                              </span>
+                            </td>
+                            <td className="p-4 text-sm font-semibold">
+                              <div>{p.currentStock.toLocaleString()} {p.unit}</div>
+                              <span className="text-xs text-slate-400 font-normal">Catalog Stock</span>
+                            </td>
+                            <td className="p-4 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingProductId(p.id);
+                                    setEditingSellingPrice(String(p.sellingPrice || 0));
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+                                >
+                                  Configure Price
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteProduct(p.id)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                  title="Remove Product"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Expandable Bill-of-Materials Breakdown */}
+                          {isExpanded && hasBom && (
+                            <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-y border-slate-200 dark:border-slate-700">
+                              <td colSpan={8} className="p-5">
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                      <Layers className="w-4 h-4 text-blue-600" />
+                                      <span>BOM Component Breakdown for {p.name} (Cost: ₹{cost.toFixed(2)})</span>
+                                    </h4>
+                                    <span className="text-xs text-slate-500">
+                                      Formula: Quantity &times; (1 + Scrap Factor) &times; Approved Raw Material Rate
+                                    </span>
+                                  </div>
+
+                                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
+                                    <table className="w-full text-xs text-left">
+                                      <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold">
+                                        <tr>
+                                          <th className="p-3">Raw Material</th>
+                                          <th className="p-3">Material SKU</th>
+                                          <th className="p-3 text-right">Required Qty</th>
+                                          <th className="p-3 text-right">Scrap Factor</th>
+                                          <th className="p-3 text-right">Active Approved Rate</th>
+                                          <th className="p-3 text-right">Effective Line Cost</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
+                                        {p.bomComponents?.map((comp) => (
+                                          <tr key={comp.id || comp.rawMaterialId}>
+                                            <td className="p-3 font-sans font-bold text-slate-900 dark:text-white">
+                                              {comp.name || 'Raw Material'}
+                                            </td>
+                                            <td className="p-3 text-slate-500">{comp.materialCode}</td>
+                                            <td className="p-3 text-right">{comp.quantity} {comp.unit}</td>
+                                            <td className="p-3 text-right">{(comp.scrapFactor * 100).toFixed(0)}%</td>
+                                            <td className="p-3 text-right font-bold text-amber-600">
+                                              ₹{Number(comp.rate).toFixed(2)}
+                                            </td>
+                                            <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
+                                              ₹{Number(comp.lineCost).toFixed(2)}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1656,88 +2512,230 @@ export default function SuperAdminDashboardPage() {
       )}
 
       {/* =================================================================== */}
-      {/* MODAL 3: PAYROLL ADJUSTMENT (Increments / Deductions / Attendance)   */}
+      {/* MODAL 4: APPROVE RATE CHANGE REQUEST                                */}
       {/* =================================================================== */}
-      {isAdjustmentModalOpen && selectedPayrollUser && (
+      {isApprovalModalOpen && selectedRateRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-xl font-bold">
-                Adjust Payroll: {selectedPayrollUser.employeeName}
-              </h3>
-              <button type="button" onClick={() => setIsAdjustmentModalOpen(false)}>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-xl font-bold">Approve Procurement Rate Request</h3>
+              </div>
+              <button type="button" onClick={() => setIsApprovalModalOpen(false)}>
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveAdjustment} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-bold mb-1">Base Salary (₹)</label>
-                  <input
-                    type="number"
-                    disabled
-                    value={selectedPayrollUser.baseSalary}
-                    className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-base font-mono opacity-80"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold mb-1">Attendance Days</label>
-                  <input
-                    type="number"
-                    max={26}
-                    min={0}
-                    value={adjAttendance}
-                    onChange={(e) => setAdjAttendance(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base font-bold font-mono"
-                  />
-                </div>
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Raw Material:</span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {selectedRateRequest.rawMaterial?.name} ({selectedRateRequest.rawMaterial?.materialCode})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Current Active Rate:</span>
+                <span className="font-mono font-semibold">₹{Number(selectedRateRequest.currentRate || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Proposed by Procurement:</span>
+                <span className="font-mono font-bold text-emerald-600">₹{Number(selectedRateRequest.proposedRate || 0).toFixed(2)}</span>
+              </div>
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                <span className="text-slate-500 block text-xs mb-0.5">Procurement Reason:</span>
+                <p className="text-xs text-slate-700 dark:text-slate-300 italic">"{selectedRateRequest.reason || 'None provided'}"</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold mb-1">Approved Final Rate (₹ per unit)</label>
+              <input
+                type="number"
+                step="0.01"
+                required
+                value={customApprovedRate}
+                onChange={(e) => setCustomApprovedRate(e.target.value)}
+                className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-lg font-mono font-bold text-emerald-600"
+              />
+              <span className="text-xs text-slate-400 mt-1 block">
+                You can accept the proposed rate or specify a negotiated final rate.
+              </span>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
+              <strong>Automatic Recalculation Notice:</strong> Approving will instantly update the raw material active rate and trigger automatic recalculation of the Cost Price across all finished products in your catalog using this material.
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsApprovalModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl border text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApproveRateRequest(selectedRateRequest, parseFloat(customApprovedRate))}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow transition-all"
+              >
+                Confirm Approval &amp; Recalculate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* MODAL 5: REJECT RATE CHANGE REQUEST                                 */}
+      {/* =================================================================== */}
+      {isRejectModalOpen && selectedRateRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <XCircle className="w-5 h-5 text-red-600" />
+                <h3 className="text-xl font-bold">Reject Procurement Rate Request</h3>
+              </div>
+              <button type="button" onClick={() => setIsRejectModalOpen(false)}>
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1.5 text-sm">
+              <div className="font-bold text-slate-900 dark:text-white">
+                {selectedRateRequest.rawMaterial?.name} ({selectedRateRequest.rawMaterial?.materialCode})
+              </div>
+              <div className="text-xs text-slate-500">
+                Proposed: ₹{Number(selectedRateRequest.proposedRate || 0).toFixed(2)} (Current: ₹{Number(selectedRateRequest.currentRate || 0).toFixed(2)})
+              </div>
+              <div className="text-xs text-slate-600 dark:text-slate-300 italic pt-1">
+                Reason: "{selectedRateRequest.reason || 'None provided'}"
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold mb-1">Rejection Reason / Executive Feedback *</label>
+              <textarea
+                required
+                rows={3}
+                value={rejectionReasonInput}
+                onChange={(e) => setRejectionReasonInput(e.target.value)}
+                placeholder="State reason e.g. 'Rate exceeds approved supplier contract parameters; renegotiate with secondary vendor.'"
+                className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-sm"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsRejectModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl border text-sm font-bold text-slate-600 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRejectRateRequest(selectedRateRequest, rejectionReasonInput)}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow transition-all"
+              >
+                Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* MODAL 6: DIRECT RAW MATERIAL RATE OVERRIDE                          */}
+      {/* =================================================================== */}
+      {isDirectRateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-amber-600" />
+                <h3 className="text-xl font-bold">Direct Raw Material Rate Override</h3>
+              </div>
+              <button type="button" onClick={() => setIsDirectRateModalOpen(false)}>
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <form onSubmit={handleDirectRateOverride} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold mb-1">Select Raw Material *</label>
+                <select
+                  value={selectedRmForRateEdit?.id || ''}
+                  onChange={(e) => {
+                    const found = rawMaterials.find((rm) => rm.id === e.target.value);
+                    if (found) {
+                      setSelectedRmForRateEdit(found);
+                      setDirectRateInput(String(found.rate ?? found.costPrice ?? 0));
+                    }
+                  }}
+                  required
+                  className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-sm font-semibold"
+                >
+                  {rawMaterials.map((rm) => (
+                    <option key={rm.id} value={rm.id}>
+                      {rm.name} ({rm.materialCode}) - Current: ₹{rm.rate ?? rm.costPrice ?? 0}/{rm.unit}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-bold mb-1">Increment / Bonus (+₹)</label>
-                  <input
-                    type="number"
-                    value={adjIncrement}
-                    onChange={(e) => setAdjIncrement(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base font-bold text-emerald-600 font-mono"
-                  />
+              {selectedRmForRateEdit && (
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs flex justify-between">
+                  <span className="text-slate-500">Current Rate:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">
+                    ₹{Number(selectedRmForRateEdit.rate ?? selectedRmForRateEdit.costPrice ?? 0).toFixed(2)} / {selectedRmForRateEdit.unit}
+                  </span>
                 </div>
-                <div>
-                  <label className="block text-sm font-bold mb-1">Deductions (-₹)</label>
-                  <input
-                    type="number"
-                    value={adjDeduction}
-                    onChange={(e) => setAdjDeduction(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base font-bold text-red-500 font-mono"
-                  />
-                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-bold mb-1">New Active Rate (₹ per unit) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={directRateInput}
+                  onChange={(e) => setDirectRateInput(e.target.value)}
+                  placeholder="e.g. 34500.00"
+                  className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base font-mono font-bold"
+                />
               </div>
 
               <div>
-                <label className="block text-sm font-bold mb-1">Remarks / Justification</label>
+                <label className="block text-sm font-bold mb-1">Adjustment Reason / Audit Note</label>
                 <input
                   type="text"
-                  value={adjRemarks}
-                  onChange={(e) => setAdjRemarks(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base"
+                  value={directRateReason}
+                  onChange={(e) => setDirectRateReason(e.target.value)}
+                  placeholder="e.g. Q4 Executive contract adjustment / Bulk index revision"
+                  className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-sm"
                 />
+              </div>
+
+              <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-200">
+                Direct rate updates will immediately trigger automated recalculation of BOM Cost Prices across all products in {companyName}.
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setIsAdjustmentModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border text-sm font-bold"
+                  onClick={() => setIsDirectRateModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border text-sm font-bold text-slate-600 dark:text-slate-300"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold shadow"
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow"
                 >
-                  Save Payroll Changes
+                  Override &amp; Recalculate
                 </button>
               </div>
             </form>

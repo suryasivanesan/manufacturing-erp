@@ -33,6 +33,9 @@ export class SuperAdminService {
   private inMemoryProducts: any[] = [];
   private inMemoryPayrolls: any[] = [];
   private inMemoryAuditLogs: any[] = [];
+  private inMemoryProductRawMaterials: any[] = [];
+  private inMemoryRateRequests: any[] = [];
+  private inMemoryNotifications: any[] = [];
 
   constructor(private readonly prisma: PrismaService) {
     this.seedDefaultData();
@@ -1002,5 +1005,627 @@ export class SuperAdminService {
         createdAt: new Date(Date.now() - 3600000 * 24),
       },
     ];
+  }
+
+  // =========================================================================
+  // 9. SUPER ADMIN NOTIFICATIONS WORKFLOW
+  // =========================================================================
+
+  async getNotifications(user: UserContext) {
+    if (!user?.companyId) return { unreadCount: 0, notifications: [] };
+    const companyId = user.companyId;
+
+    try {
+      if ((this.prisma as any).notification) {
+        const notifications = await (this.prisma as any).notification.findMany({
+          where: { companyId, recipientRole: 'SUPER_ADMIN' },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        });
+        const unreadCount = notifications.filter((n: any) => !n.isRead).length;
+        if (notifications && notifications.length > 0) {
+          return { unreadCount, notifications };
+        }
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma notification fetch fallback: ${this.errMsg(err)}`);
+    }
+
+    const local = this.inMemoryNotifications.filter(
+      (n: any) => n.companyId === companyId && n.recipientRole === 'SUPER_ADMIN',
+    );
+    const unreadCount = local.filter((n: any) => !n.isRead).length;
+    return { unreadCount, notifications: local };
+  }
+
+  async markNotificationRead(user: UserContext, id: string) {
+    if (!user?.companyId) throw new BadRequestException('Company association required.');
+    const companyId = user.companyId;
+
+    try {
+      if ((this.prisma as any).notification) {
+        await (this.prisma as any).notification.updateMany({
+          where: { id, companyId },
+          data: { isRead: true, updatedAt: new Date() },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma markNotificationRead fallback: ${this.errMsg(err)}`);
+    }
+
+    const n = this.inMemoryNotifications.find((item) => item.id === id && item.companyId === companyId);
+    if (n) n.isRead = true;
+    return { success: true };
+  }
+
+  async markAllNotificationsRead(user: UserContext) {
+    if (!user?.companyId) throw new BadRequestException('Company association required.');
+    const companyId = user.companyId;
+
+    try {
+      if ((this.prisma as any).notification) {
+        await (this.prisma as any).notification.updateMany({
+          where: { companyId, recipientRole: 'SUPER_ADMIN', isRead: false },
+          data: { isRead: true, updatedAt: new Date() },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma markAllNotificationsRead fallback: ${this.errMsg(err)}`);
+    }
+
+    this.inMemoryNotifications
+      .filter((n) => n.companyId === companyId && n.recipientRole === 'SUPER_ADMIN')
+      .forEach((n) => (n.isRead = true));
+
+    return { success: true };
+  }
+
+  // =========================================================================
+  // 10. RATE CHANGE REQUESTS & APPROVAL RECALCULATION
+  // =========================================================================
+
+  async getRateRequests(user: UserContext, status?: string) {
+    if (!user?.companyId) return [];
+    const companyId = user.companyId;
+
+    try {
+      if ((this.prisma as any).rawMaterialRateRequest) {
+        const where: any = { companyId };
+        if (status) where.status = status;
+        const requests = await (this.prisma as any).rawMaterialRateRequest.findMany({
+          where,
+          include: { rawMaterial: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (requests && requests.length > 0) return requests;
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma rate requests fetch fallback: ${this.errMsg(err)}`);
+    }
+
+    return this.inMemoryRateRequests.filter(
+      (r: any) => r.companyId === companyId && (!status || r.status === status),
+    );
+  }
+
+  async approveRateRequest(user: UserContext, id: string, approvedRate?: number) {
+    if (!user?.companyId) throw new BadRequestException('Company association required.');
+    const companyId = user.companyId;
+
+    let request: any = null;
+    try {
+      if ((this.prisma as any).rawMaterialRateRequest) {
+        request = await (this.prisma as any).rawMaterialRateRequest.findFirst({
+          where: { id, companyId },
+          include: { rawMaterial: true },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma find rateRequest fallback: ${this.errMsg(err)}`);
+    }
+
+    if (!request) {
+      request = this.inMemoryRateRequests.find((r: any) => r.id === id && r.companyId === companyId);
+    }
+
+    if (!request) {
+      throw new NotFoundException(`Rate change request ${id} not found.`);
+    }
+
+    if (request.status !== 'PENDING') {
+      throw new BadRequestException(`Rate change request is already ${request.status}.`);
+    }
+
+    const newRate = approvedRate != null ? Number(approvedRate) : Number(request.proposedRate);
+    const rawMaterialId = request.rawMaterialId;
+
+    // 1. Update the request status
+    try {
+      if ((this.prisma as any).rawMaterialRateRequest) {
+        await (this.prisma as any).rawMaterialRateRequest.update({
+          where: { id },
+          data: {
+            status: 'APPROVED',
+            reviewedByUserId: user.id,
+            reviewedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma update rateRequest fallback: ${this.errMsg(err)}`);
+    }
+    request.status = 'APPROVED';
+    request.reviewedByUserId = user.id;
+    request.reviewedAt = new Date();
+
+    // 2. Update the Raw Material rate & costPrice overall
+    try {
+      if ((this.prisma as any).rawMaterial) {
+        await (this.prisma as any).rawMaterial.update({
+          where: { id: rawMaterialId },
+          data: {
+            rate: newRate,
+            unitPrice: newRate,
+            costPrice: newRate,
+            updatedAt: new Date(),
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma update rawMaterial rate fallback: ${this.errMsg(err)}`);
+    }
+
+    const rm = this.inMemoryRawMaterials.find((m: any) => m.id === rawMaterialId);
+    if (rm) {
+      rm.rate = newRate;
+      rm.unitPrice = newRate;
+      rm.costPrice = newRate;
+      rm.updatedAt = new Date();
+    }
+
+    // 3. Automatically recalculate costPrice for all products in this companyId consuming this raw material
+    const affectedProductsCount = await this.recalculateProductCostPrices(companyId, rawMaterialId);
+
+    // 4. Create Notification for Procurement role
+    try {
+      if ((this.prisma as any).notification) {
+        await (this.prisma as any).notification.create({
+          data: {
+            id: `notif-${Date.now()}`,
+            companyId,
+            recipientRole: 'PROCUREMENT',
+            title: 'Rate Change Request Approved',
+            message: `Rate for "${request.rawMaterial?.name || 'Raw Material'}" approved at ₹${newRate}. Cost prices for ${affectedProductsCount} products were recalculated.`,
+            type: 'RATE_APPROVED',
+            referenceId: id,
+            isRead: false,
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma notification create fallback: ${this.errMsg(err)}`);
+    }
+
+    // 5. Record Audit movement
+    await this.recordAuditMovement(user, {
+      action: 'RATE_REQUEST_APPROVED',
+      module: 'PROCUREMENT',
+      details: `Approved rate change for raw material ${rawMaterialId} to INR ${newRate}. Recalculated costPrice for ${affectedProductsCount} products.`,
+      movementType: 'STATUS_CHANGE',
+    });
+
+    return {
+      success: true,
+      message: `Rate request approved at ₹${newRate}. Product cost prices recalculated.`,
+      newRate,
+      rawMaterialId,
+      affectedProductsCount,
+    };
+  }
+
+  async rejectRateRequest(user: UserContext, id: string, rejectionReason?: string) {
+    if (!user?.companyId) throw new BadRequestException('Company association required.');
+    const companyId = user.companyId;
+
+    let request: any = null;
+    try {
+      if ((this.prisma as any).rawMaterialRateRequest) {
+        request = await (this.prisma as any).rawMaterialRateRequest.findFirst({
+          where: { id, companyId },
+          include: { rawMaterial: true },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma find rateRequest fallback: ${this.errMsg(err)}`);
+    }
+
+    if (!request) {
+      request = this.inMemoryRateRequests.find((r: any) => r.id === id && r.companyId === companyId);
+    }
+
+    if (!request) {
+      throw new NotFoundException(`Rate change request ${id} not found.`);
+    }
+
+    const reason = rejectionReason?.trim() || 'Super Admin rejected proposed procurement rate.';
+
+    try {
+      if ((this.prisma as any).rawMaterialRateRequest) {
+        await (this.prisma as any).rawMaterialRateRequest.update({
+          where: { id },
+          data: {
+            status: 'REJECTED',
+            rejectionReason: reason,
+            reviewedByUserId: user.id,
+            reviewedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma update rateRequest fallback: ${this.errMsg(err)}`);
+    }
+    request.status = 'REJECTED';
+    request.rejectionReason = reason;
+    request.reviewedByUserId = user.id;
+    request.reviewedAt = new Date();
+
+    // Create Notification for Procurement
+    try {
+      if ((this.prisma as any).notification) {
+        await (this.prisma as any).notification.create({
+          data: {
+            id: `notif-${Date.now()}`,
+            companyId,
+            recipientRole: 'PROCUREMENT',
+            title: 'Rate Change Request Rejected',
+            message: `Proposed rate change for "${request.rawMaterial?.name || 'Raw Material'}" was rejected. Reason: ${reason}`,
+            type: 'RATE_REJECTED',
+            referenceId: id,
+            isRead: false,
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma notification create fallback: ${this.errMsg(err)}`);
+    }
+
+    return {
+      success: true,
+      message: 'Rate request rejected.',
+      id,
+    };
+  }
+
+  // =========================================================================
+  // 11. DIRECT RAW MATERIAL RATE UPDATE (SUPER ADMIN DIRECT OVERRIDE)
+  // =========================================================================
+
+  async updateRawMaterialRate(user: UserContext, id: string, rate: number, reason?: string) {
+    if (!user?.companyId) throw new BadRequestException('Company association required.');
+    const companyId = user.companyId;
+
+    const newRate = Number(rate);
+    if (isNaN(newRate) || newRate < 0) {
+      throw new BadRequestException('Valid positive rate is required.');
+    }
+
+    try {
+      if ((this.prisma as any).rawMaterial) {
+        await (this.prisma as any).rawMaterial.update({
+          where: { id, companyId },
+          data: {
+            rate: newRate,
+            unitPrice: newRate,
+            costPrice: newRate,
+            updatedAt: new Date(),
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma direct rawMaterial rate update fallback: ${this.errMsg(err)}`);
+    }
+
+    const rm = this.inMemoryRawMaterials.find((m: any) => m.id === id && (m.companyId === companyId || !m.companyId));
+    if (rm) {
+      rm.rate = newRate;
+      rm.unitPrice = newRate;
+      rm.costPrice = newRate;
+      rm.updatedAt = new Date();
+    }
+
+    // Automatically recalculate costPrice for all products in this companyId consuming this raw material
+    const affectedProductsCount = await this.recalculateProductCostPrices(companyId, id);
+
+    await this.recordAuditMovement(user, {
+      action: 'RAW_MATERIAL_RATE_DIRECT_UPDATE',
+      module: 'INVENTORY',
+      details: `Super Admin directly updated raw material ${id} rate to INR ${newRate}. Recalculated ${affectedProductsCount} products. Reason: ${reason || 'Direct Super Admin price update'}`,
+      movementType: 'TRANSFER',
+    });
+
+    return {
+      success: true,
+      message: `Raw material rate updated to ₹${newRate}. Product cost prices recalculated.`,
+      rawMaterialId: id,
+      newRate,
+      affectedProductsCount,
+    };
+  }
+
+  // =========================================================================
+  // 12. PRODUCT PRICING CONFIGURATION & BOM COST RECALCULATION
+  // =========================================================================
+
+  async updateProductPricing(user: UserContext, id: string, sellingPrice: number) {
+    if (!user?.companyId) throw new BadRequestException('Company association required.');
+    const companyId = user.companyId;
+
+    const newSellingPrice = Number(sellingPrice);
+    if (isNaN(newSellingPrice) || newSellingPrice < 0) {
+      throw new BadRequestException('Valid non-negative selling price is required.');
+    }
+
+    let product: any = null;
+    try {
+      if ((this.prisma as any).product) {
+        product = await (this.prisma as any).product.findFirst({
+          where: { id, companyId },
+          include: {
+            rawMaterials: {
+              include: { rawMaterial: true },
+            },
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma find product pricing fallback: ${this.errMsg(err)}`);
+    }
+
+    if (!product) {
+      product = this.inMemoryProducts.find((p: any) => p.id === id && (p.companyId === companyId || !p.companyId));
+    }
+
+    if (!product) {
+      throw new NotFoundException(`Product ${id} not found.`);
+    }
+
+    try {
+      if ((this.prisma as any).product) {
+        product = await (this.prisma as any).product.update({
+          where: { id },
+          data: {
+            sellingPrice: newSellingPrice,
+            updatedAt: new Date(),
+          },
+          include: {
+            rawMaterials: {
+              include: { rawMaterial: true },
+            },
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma update product pricing fallback: ${this.errMsg(err)}`);
+    }
+
+    if (product) {
+      product.sellingPrice = newSellingPrice;
+    }
+
+    const costPrice = Number(product.costPrice || 0);
+    const profitMarginAmount = Number((newSellingPrice - costPrice).toFixed(2));
+    const profitMarginPercentage =
+      costPrice > 0 ? Number((((newSellingPrice - costPrice) / costPrice) * 100).toFixed(2)) : 0.0;
+
+    await this.recordAuditMovement(user, {
+      action: 'PRODUCT_SELLING_PRICE_CONFIGURED',
+      module: 'SALES',
+      details: `Configured product ${product.name} selling price to INR ${newSellingPrice}. Cost price: INR ${costPrice}, Margin: ${profitMarginPercentage}%`,
+      movementType: 'STATUS_CHANGE',
+    });
+
+    return {
+      success: true,
+      id: product.id,
+      name: product.name,
+      sku: product.sku,
+      costPrice,
+      sellingPrice: newSellingPrice,
+      profitMarginAmount,
+      profitMarginPercentage,
+      currency: 'INR',
+    };
+  }
+
+  async setProductBom(
+    user: UserContext,
+    productId: string,
+    items: Array<{ rawMaterialId: string; quantity: number; scrapFactor?: number }>,
+  ) {
+    if (!user?.companyId) throw new BadRequestException('Company association required.');
+    const companyId = user.companyId;
+
+    try {
+      if ((this.prisma as any).productRawMaterial) {
+        // Clear existing mappings
+        await (this.prisma as any).productRawMaterial.deleteMany({
+          where: { productId, companyId },
+        });
+
+        // Insert new mappings
+        for (const item of items) {
+          await (this.prisma as any).productRawMaterial.create({
+            data: {
+              productId,
+              rawMaterialId: item.rawMaterialId,
+              quantity: Number(item.quantity || 1),
+              scrapFactor: Number(item.scrapFactor || 0),
+              companyId,
+            },
+          });
+        }
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma setProductBom fallback: ${this.errMsg(err)}`);
+    }
+
+    // In-memory update
+    this.inMemoryProductRawMaterials = this.inMemoryProductRawMaterials.filter(
+      (m) => !(m.productId === productId && m.companyId === companyId),
+    );
+    for (const item of items) {
+      this.inMemoryProductRawMaterials.push({
+        id: `prm-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        productId,
+        rawMaterialId: item.rawMaterialId,
+        quantity: Number(item.quantity || 1),
+        scrapFactor: Number(item.scrapFactor || 0),
+        companyId,
+      });
+    }
+
+    // Recalculate cost price
+    await this.recalculateProductCostPrices(companyId, undefined);
+
+    return await this.getProductPricingOverview(user, productId);
+  }
+
+  async recalculateProductCostPrices(companyId: string, rawMaterialId?: string): Promise<number> {
+    try {
+      let mappings: any[] = [];
+      if ((this.prisma as any).productRawMaterial) {
+        const where: any = { companyId };
+        if (rawMaterialId) where.rawMaterialId = rawMaterialId;
+        mappings = await (this.prisma as any).productRawMaterial.findMany({
+          where,
+          include: { rawMaterial: true, product: true },
+        });
+      }
+
+      if (mappings.length === 0) {
+        mappings = this.inMemoryProductRawMaterials.filter(
+          (m) => m.companyId === companyId && (!rawMaterialId || m.rawMaterialId === rawMaterialId),
+        );
+      }
+
+      const affectedProductIds = Array.from(new Set(mappings.map((m: any) => m.productId)));
+
+      for (const prodId of affectedProductIds) {
+        let allMappings: any[] = [];
+        if ((this.prisma as any).productRawMaterial) {
+          allMappings = await (this.prisma as any).productRawMaterial.findMany({
+            where: { productId: prodId, companyId },
+            include: { rawMaterial: true },
+          });
+        }
+        if (allMappings.length === 0) {
+          allMappings = this.inMemoryProductRawMaterials.filter(
+            (m) => m.productId === prodId && m.companyId === companyId,
+          );
+        }
+
+        let calculatedCost = 0;
+        for (const map of allMappings) {
+          const rmRate = Number(
+            map.rawMaterial?.rate ??
+            map.rawMaterial?.costPrice ??
+            map.rawMaterial?.unitPrice ??
+            100,
+          );
+          const qty = Number(map.quantity || 1);
+          const scrap = Number(map.scrapFactor || 0);
+          calculatedCost += rmRate * qty * (1 + scrap);
+        }
+
+        const finalCost = Math.round(calculatedCost * 100) / 100;
+
+        if ((this.prisma as any).product) {
+          await (this.prisma as any).product.update({
+            where: { id: prodId, companyId },
+            data: { costPrice: finalCost, updatedAt: new Date() },
+          });
+        }
+
+        const p = this.inMemoryProducts.find((item: any) => item.id === prodId && item.companyId === companyId);
+        if (p) p.costPrice = finalCost;
+      }
+
+      return affectedProductIds.length;
+    } catch (err: unknown) {
+      this.logger.warn(`recalculateProductCostPrices error: ${this.errMsg(err)}`);
+      return 0;
+    }
+  }
+
+  async getProductPricingOverview(user: UserContext, productId?: string) {
+    if (!user?.companyId) return [];
+    const companyId = user.companyId;
+
+    try {
+      if ((this.prisma as any).product) {
+        const where: any = { companyId };
+        if (productId) where.id = productId;
+        const products = await (this.prisma as any).product.findMany({
+          where,
+          include: {
+            rawMaterials: {
+              include: { rawMaterial: true },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (products && products.length > 0) {
+          return products.map((p: any) => {
+            const costPrice = Number(p.costPrice || 0);
+            const sellingPrice = Number(p.sellingPrice || 0);
+            const profitMarginAmount = Number((sellingPrice - costPrice).toFixed(2));
+            const profitMarginPercentage =
+              costPrice > 0 ? Number((((sellingPrice - costPrice) / costPrice) * 100).toFixed(2)) : 0.0;
+
+            return {
+              ...p,
+              costPrice,
+              sellingPrice,
+              profitMarginAmount,
+              profitMarginPercentage,
+              bomComponents: (p.rawMaterials || []).map((m: any) => ({
+                id: m.id,
+                rawMaterialId: m.rawMaterialId,
+                name: m.rawMaterial?.name,
+                materialCode: m.rawMaterial?.materialCode,
+                rate: m.rawMaterial?.rate ?? m.rawMaterial?.costPrice ?? 0,
+                unit: m.rawMaterial?.unit,
+                quantity: m.quantity,
+                scrapFactor: m.scrapFactor,
+                lineCost: Number(
+                  ((m.rawMaterial?.rate ?? m.rawMaterial?.costPrice ?? 0) * m.quantity * (1 + (m.scrapFactor || 0))).toFixed(2),
+                ),
+              })),
+            };
+          });
+        }
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Prisma getProductPricingOverview fallback: ${this.errMsg(err)}`);
+    }
+
+    return this.inMemoryProducts
+      .filter((p: any) => (p.companyId === companyId || !p.companyId) && (!productId || p.id === productId))
+      .map((p: any) => {
+        const costPrice = Number(p.costPrice || 0);
+        const sellingPrice = Number(p.sellingPrice || 0);
+        return {
+          ...p,
+          costPrice,
+          sellingPrice,
+          profitMarginAmount: Number((sellingPrice - costPrice).toFixed(2)),
+          profitMarginPercentage:
+            costPrice > 0 ? Number((((sellingPrice - costPrice) / costPrice) * 100).toFixed(2)) : 0.0,
+          bomComponents: [],
+        };
+      });
   }
 }
