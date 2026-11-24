@@ -171,19 +171,25 @@ export class SuperAdminService {
       dto.materialCode?.trim() ||
       `RM-${dto.category.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
 
+    const initialRate = Number(dto.rate ?? dto.unitPrice ?? dto.costPrice ?? 0);
+    const sellingPrice = Number(dto.sellingPrice ?? initialRate);
+
     const record = {
       id: `rm-${Date.now()}`,
       materialCode,
       name: dto.name.trim(),
       category: dto.category.trim(),
-      costPrice: Number(dto.costPrice),
-      sellingPrice: Number(dto.sellingPrice),
+      costPrice: initialRate,
+      sellingPrice,
+      unitPrice: initialRate,
+      rate: initialRate,
       unit: dto.unit.trim(),
       currentStock: Number(dto.currentStock ?? 0),
       reorderLevel: Number(dto.reorderLevel ?? 10),
       supplierName: dto.supplierName?.trim() || 'Approved Primary Vendor',
       storageLocation: dto.storageLocation?.trim() || 'Main Inward Silo / Bay',
       notes: dto.notes?.trim() || null,
+      updatedByRole: 'SUPER_ADMIN',
       companyId,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -197,7 +203,7 @@ export class SuperAdminService {
         await this.recordAuditMovement(user, {
           action: 'RAW_MATERIAL_CREATED',
           module: 'INVENTORY',
-          details: `Created raw material ${record.name} (${record.materialCode}) with stock ${record.currentStock} ${record.unit}`,
+          details: `Created raw material ${record.name} (${record.materialCode}) with rate ₹${initialRate} and stock ${record.currentStock} ${record.unit}`,
           movementType: 'INWARD',
         });
         return created;
@@ -235,21 +241,43 @@ export class SuperAdminService {
     }
     const companyId = user.companyId;
 
+    const newRate =
+      dto.rate != null
+        ? Number(dto.rate)
+        : dto.costPrice != null
+        ? Number(dto.costPrice)
+        : dto.unitPrice != null
+        ? Number(dto.unitPrice)
+        : undefined;
+
+    const updateData: any = {
+      ...dto,
+      updatedAt: new Date(),
+    };
+    if (newRate !== undefined) {
+      updateData.rate = newRate;
+      updateData.unitPrice = newRate;
+      updateData.costPrice = newRate;
+      updateData.updatedByRole = 'SUPER_ADMIN';
+    }
+
     try {
       if ((this.prisma as any).rawMaterial) {
         const updated = await (this.prisma as any).rawMaterial.update({
           where: { id, companyId },
-          data: {
-            ...dto,
-            updatedAt: new Date(),
-          },
+          data: updateData,
         });
         await this.recordAuditMovement(user, {
           action: 'RAW_MATERIAL_UPDATED',
           module: 'INVENTORY',
-          details: `Updated raw material ${id} pricing/stock`,
+          details: `Updated raw material ${id} pricing/stock${newRate !== undefined ? ` (New Rate: ₹${newRate})` : ''}`,
           movementType: 'TRANSFER',
         });
+
+        if (newRate !== undefined) {
+          await this.recalculateCompanyProductCosts(companyId, id);
+        }
+
         return updated;
       }
     } catch (err: unknown) {
@@ -260,9 +288,11 @@ export class SuperAdminService {
     if (idx !== -1) {
       this.inMemoryRawMaterials[idx] = {
         ...this.inMemoryRawMaterials[idx],
-        ...dto,
-        updatedAt: new Date(),
+        ...updateData,
       };
+      if (newRate !== undefined) {
+        await this.recalculateCompanyProductCosts(companyId, id);
+      }
       return this.inMemoryRawMaterials[idx];
     }
     throw new NotFoundException(`Raw material ${id} not found.`);
@@ -1168,6 +1198,7 @@ export class SuperAdminService {
             rate: newRate,
             unitPrice: newRate,
             costPrice: newRate,
+            updatedByRole: 'SUPER_ADMIN',
             updatedAt: new Date(),
           },
         });
@@ -1181,11 +1212,12 @@ export class SuperAdminService {
       rm.rate = newRate;
       rm.unitPrice = newRate;
       rm.costPrice = newRate;
+      rm.updatedByRole = 'SUPER_ADMIN';
       rm.updatedAt = new Date();
     }
 
     // 3. Automatically recalculate costPrice for all products in this companyId consuming this raw material
-    const affectedProductsCount = await this.recalculateProductCostPrices(companyId, rawMaterialId);
+    const affectedProductsCount = await this.recalculateCompanyProductCosts(companyId, rawMaterialId);
 
     // 4. Create Notification for Procurement role
     try {
@@ -1319,6 +1351,7 @@ export class SuperAdminService {
             rate: newRate,
             unitPrice: newRate,
             costPrice: newRate,
+            updatedByRole: 'SUPER_ADMIN',
             updatedAt: new Date(),
           },
         });
@@ -1332,11 +1365,12 @@ export class SuperAdminService {
       rm.rate = newRate;
       rm.unitPrice = newRate;
       rm.costPrice = newRate;
+      rm.updatedByRole = 'SUPER_ADMIN';
       rm.updatedAt = new Date();
     }
 
     // Automatically recalculate costPrice for all products in this companyId consuming this raw material
-    const affectedProductsCount = await this.recalculateProductCostPrices(companyId, id);
+    const affectedProductsCount = await this.recalculateCompanyProductCosts(companyId, id);
 
     await this.recordAuditMovement(user, {
       action: 'RAW_MATERIAL_RATE_DIRECT_UPDATE',
@@ -1433,7 +1467,9 @@ export class SuperAdminService {
       sku: product.sku,
       costPrice,
       sellingPrice: newSellingPrice,
+      profitAmount: profitMarginAmount,
       profitMarginAmount,
+      profitMarginPercent: profitMarginPercentage,
       profitMarginPercentage,
       currency: 'INR',
     };
@@ -1487,12 +1523,12 @@ export class SuperAdminService {
     }
 
     // Recalculate cost price
-    await this.recalculateProductCostPrices(companyId, undefined);
+    await this.recalculateCompanyProductCosts(companyId, undefined);
 
     return await this.getProductPricingOverview(user, productId);
   }
 
-  async recalculateProductCostPrices(companyId: string, rawMaterialId?: string): Promise<number> {
+  async recalculateCompanyProductCosts(companyId: string, rawMaterialId?: string): Promise<number> {
     try {
       let mappings: any[] = [];
       if ((this.prisma as any).productRawMaterial) {
@@ -1528,12 +1564,20 @@ export class SuperAdminService {
 
         let calculatedCost = 0;
         for (const map of allMappings) {
-          const rmRate = Number(
+          let rmRate = Number(
             map.rawMaterial?.rate ??
             map.rawMaterial?.costPrice ??
             map.rawMaterial?.unitPrice ??
-            100,
+            0,
           );
+          if (rmRate === 0) {
+            const memRm = this.inMemoryRawMaterials.find(
+              (r: any) => r.id === map.rawMaterialId && (r.companyId === companyId || !r.companyId),
+            );
+            if (memRm) {
+              rmRate = Number(memRm.rate ?? memRm.unitPrice ?? memRm.costPrice ?? 0);
+            }
+          }
           const qty = Number(map.quantity || 1);
           const scrap = Number(map.scrapFactor || 0);
           calculatedCost += rmRate * qty * (1 + scrap);
@@ -1554,9 +1598,14 @@ export class SuperAdminService {
 
       return affectedProductIds.length;
     } catch (err: unknown) {
-      this.logger.warn(`recalculateProductCostPrices error: ${this.errMsg(err)}`);
+      this.logger.warn(`recalculateCompanyProductCosts error: ${this.errMsg(err)}`);
       return 0;
     }
+  }
+
+  // Alias for backward compatibility
+  async recalculateProductCostPrices(companyId: string, rawMaterialId?: string): Promise<number> {
+    return this.recalculateCompanyProductCosts(companyId, rawMaterialId);
   }
 
   async getProductPricingOverview(user: UserContext, productId?: string) {

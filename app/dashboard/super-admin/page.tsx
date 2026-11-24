@@ -192,6 +192,11 @@ export default function SuperAdminDashboardPage() {
   const [directRateReason, setDirectRateReason] = useState<string>('');
   const [isDirectRateModalOpen, setIsDirectRateModalOpen] = useState<boolean>(false);
 
+  // Inline Raw Material Rate Quick-Edit State
+  const [editingRmId, setEditingRmId] = useState<string | null>(null);
+  const [editingRmRate, setEditingRmRate] = useState<string>('');
+  const [isSavingRmRate, setIsSavingRmRate] = useState<boolean>(false);
+
   // Selling Price Quick Edit State
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editingSellingPrice, setEditingSellingPrice] = useState<string>('');
@@ -474,6 +479,50 @@ export default function SuperAdminDashboardPage() {
       }
     } catch {
       setFeedbackError('Network error overriding rate.');
+    }
+  };
+
+  const handleSaveDirectRate = async (rmId: string, rateVal?: number, reason?: string) => {
+    const val = rateVal !== undefined ? rateVal : parseFloat(editingRmRate);
+    if (isNaN(val) || val < 0) {
+      setFeedbackError('Please enter a valid non-negative rate.');
+      return;
+    }
+
+    setIsSavingRmRate(true);
+    const token = localStorage.getItem('access_token');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const targetRm = rawMaterials.find((r) => r.id === rmId);
+
+    try {
+      const res = await fetch(`${apiUrl}/super-admin/raw-materials/${rmId}/rate`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          rate: val,
+          reason: reason || 'Super Admin direct rate update',
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setFeedbackSuccess(
+          `Rate for ${targetRm?.name || 'Raw Material'} fixed to ₹${val.toFixed(2)}. Recalculated cost prices for ${data.affectedProductsCount} linked products!`,
+        );
+        setEditingRmId(null);
+        setEditingRmRate('');
+        loadInitialData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setFeedbackError(err.message || 'Failed to update raw material rate.');
+      }
+    } catch {
+      setFeedbackError('Network error updating raw material rate.');
+    } finally {
+      setIsSavingRmRate(false);
     }
   };
 
@@ -1005,7 +1054,7 @@ export default function SuperAdminDashboardPage() {
                 }`}
               >
                 <ShieldAlert className="w-4 h-4" />
-                <span>Rate Approvals</span>
+                <span>Rate Master &amp; Approvals</span>
                 {unreadNotifCount > 0 && (
                   <span className="px-2 py-0.5 rounded-full text-xs bg-rose-500 text-white font-extrabold animate-pulse">
                     {unreadNotifCount}
@@ -1118,7 +1167,7 @@ export default function SuperAdminDashboardPage() {
               }`}
             >
               <ShieldAlert className="w-4 h-4 text-amber-500" />
-              <span>Rate Approvals &amp; Alerts</span>
+              <span>Rate Master &amp; Approvals</span>
               {unreadNotifCount > 0 && (
                 <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-rose-500 text-white font-black animate-pulse">
                   {unreadNotifCount}
@@ -1367,10 +1416,10 @@ export default function SuperAdminDashboardPage() {
         )}
 
         {/* =================================================================== */}
-        {/* TAB: RATE APPROVALS & NOTIFICATIONS (SUPER ADMIN DUAL CONTROL)      */}
+        {/* TAB: RATE APPROVALS & DUAL-CONTROL PRICING GOVERNANCE                 */}
         {/* =================================================================== */}
         {activeTab === 'rate_approvals' && (
-          <main className="max-w-7xl mx-auto px-6 py-6 space-y-6 w-full">
+          <main className="max-w-7xl mx-auto px-6 py-6 space-y-8 w-full">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
@@ -1384,10 +1433,10 @@ export default function SuperAdminDashboardPage() {
                   )}
                 </div>
                 <h2 className="text-2xl font-black text-slate-900 dark:text-white">
-                  Procurement Rate Change Requests &amp; Alerts
+                  Rate Master &amp; Pricing Governance
                 </h2>
                 <p className="text-base text-slate-500">
-                  Review market rate adjustments requested by procurement. Approving updates active inventory valuation and automatically recalculates Cost Prices for all products consuming that raw material in {companyName}.
+                  Dual-track control: Direct Super Admin Rate Overrides alongside Procurement Rate Requests. Any rate adjustment instantly re-evaluates all downstream BOM Cost Prices for {companyName}.
                 </p>
               </div>
 
@@ -1449,15 +1498,13 @@ export default function SuperAdminDashboardPage() {
 
               <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-slate-500">Approved Revisions</span>
-                  <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600">
-                    <CheckCircle2 className="w-4 h-4" />
+                  <span className="text-sm font-bold text-slate-500">Raw Materials Master</span>
+                  <div className="p-2 rounded-xl bg-purple-100 dark:bg-purple-900/40 text-purple-600">
+                    <Package className="w-4 h-4" />
                   </div>
                 </div>
-                <div className="text-3xl font-black mt-2 text-emerald-600">
-                  {rateRequests.filter((r) => r.status === 'APPROVED').length}
-                </div>
-                <div className="text-xs text-slate-400 mt-1">Cost prices updated &amp; live</div>
+                <div className="text-3xl font-black mt-2 text-purple-600">{rawMaterials.length}</div>
+                <div className="text-xs text-slate-400 mt-1">Direct rate editable materials</div>
               </div>
 
               <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
@@ -1468,145 +1515,124 @@ export default function SuperAdminDashboardPage() {
                   </div>
                 </div>
                 <div className="text-3xl font-black mt-2 text-blue-600">{products.length}</div>
-                <div className="text-xs text-slate-400 mt-1">Active BOM catalogue items</div>
+                <div className="text-xs text-slate-400 mt-1">Auto-BOM cost pricing active</div>
               </div>
             </div>
 
-            {/* Rate Change Requests Table */}
+            {/* SECTION 1: RAW MATERIALS RATE MASTER (SUPER ADMIN DIRECT OVERRIDE) */}
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
-              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                    Procurement Rate Requests Review Panel
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                      Raw Materials Rate Master
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300">
+                      Direct Fix &amp; Recalculate
+                    </span>
+                  </div>
                   <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                    Click "Approve" to accept the proposed rate and trigger automatic recalculation of affected product cost prices.
+                    Super Admin can directly edit any rate at any time. Saving automatically recalculates the Cost Price for all linked finished products.
                   </p>
                 </div>
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                  {rateRequests.length} Total Requests
-                </span>
+                <div className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 whitespace-nowrap self-start sm:self-auto">
+                  {rawMaterials.length} Materials
+                </div>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm border-collapse">
                   <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs font-extrabold uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="p-4">Raw Material</th>
-                      <th className="p-4 text-right">Active Rate</th>
-                      <th className="p-4 text-right">Proposed Rate</th>
-                      <th className="p-4 text-right">Price Variance</th>
-                      <th className="p-4">Procurement Justification</th>
-                      <th className="p-4">Requested On</th>
-                      <th className="p-4 text-center">Status</th>
-                      <th className="p-4 text-right">Decision Actions</th>
+                      <th className="p-4">Material Code</th>
+                      <th className="p-4">Material Name</th>
+                      <th className="p-4">Category</th>
+                      <th className="p-4 text-right">Approved Rate (₹)</th>
+                      <th className="p-4">Unit</th>
+                      <th className="p-4 text-right">Current Stock</th>
+                      <th className="p-4 text-right">Fix / Update Rate</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                    {rateRequests.length === 0 ? (
+                    {rawMaterials.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="p-8 text-center text-slate-500">
-                          No rate change requests submitted yet. Procurement requests will appear here for executive approval.
+                        <td colSpan={7} className="p-8 text-center text-slate-500">
+                          No raw materials registered yet.
                         </td>
                       </tr>
                     ) : (
-                      rateRequests.map((req) => {
-                        const cur = Number(req.currentRate || 0);
-                        const prop = Number(req.proposedRate || 0);
-                        const diff = prop - cur;
-                        const pct = cur > 0 ? (diff / cur) * 100 : 0;
-                        const isIncrease = diff > 0;
+                      rawMaterials.map((rm) => {
+                        const currentRate = Number(rm.rate ?? rm.unitPrice ?? rm.costPrice ?? 0);
+                        const isEditingThis = editingRmId === rm.id;
 
                         return (
-                          <tr key={req.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                            <td className="p-4">
-                              <div className="font-bold text-slate-900 dark:text-white">
-                                {req.rawMaterial?.name || 'Raw Material'}
-                              </div>
-                              <div className="text-xs font-mono text-slate-400">
-                                {req.rawMaterial?.materialCode || req.rawMaterialId}
-                              </div>
-                            </td>
-                            <td className="p-4 text-right font-mono text-slate-600 dark:text-slate-400">
-                              ₹{cur.toFixed(2)}
-                            </td>
-                            <td className="p-4 text-right font-mono font-black text-slate-900 dark:text-white">
-                              ₹{prop.toFixed(2)}
-                            </td>
+                          <tr key={`rm-rate-${rm.id}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                            <td className="p-4 font-mono font-bold text-blue-600">{rm.materialCode}</td>
+                            <td className="p-4 font-bold text-slate-900 dark:text-white">{rm.name}</td>
+                            <td className="p-4 text-slate-500">{rm.category}</td>
                             <td className="p-4 text-right font-mono">
-                              <span
-                                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs font-bold ${
-                                  diff === 0
-                                    ? 'bg-slate-100 text-slate-700'
-                                    : isIncrease
-                                    ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
-                                    : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
-                                }`}
-                              >
-                                {isIncrease ? '+' : ''}
-                                {diff.toFixed(2)} ({isIncrease ? '+' : ''}
-                                {pct.toFixed(1)}%)
-                              </span>
-                            </td>
-                            <td className="p-4 max-w-xs text-xs text-slate-600 dark:text-slate-300">
-                              <p className="line-clamp-2">{req.reason || 'Procurement rate change'}</p>
-                              {req.rejectionReason && (
-                                <p className="text-xs text-red-600 font-bold mt-1">
-                                  Rejection: {req.rejectionReason}
-                                </p>
-                              )}
-                            </td>
-                            <td className="p-4 text-xs text-slate-500 whitespace-nowrap">
-                              {new Date(req.createdAt).toLocaleDateString()}
-                            </td>
-                            <td className="p-4 text-center">
-                              {req.status === 'PENDING' && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                                  <Clock className="w-3.5 h-3.5" />
-                                  Pending Review
+                              {isEditingThis ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <span className="text-xs font-bold text-slate-400">₹</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={editingRmRate}
+                                    onChange={(e) => setEditingRmRate(e.target.value)}
+                                    className="w-28 p-1.5 rounded-lg border border-amber-500 bg-white dark:bg-slate-800 font-mono text-sm text-right font-bold"
+                                    autoFocus
+                                  />
+                                </div>
+                              ) : (
+                                <span className="font-bold text-slate-900 dark:text-white">
+                                  ₹{currentRate.toFixed(2)}
                                 </span>
                               )}
-                              {req.status === 'APPROVED' && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  Approved &amp; Recalculated
-                                </span>
-                              )}
-                              {req.status === 'REJECTED' && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300 border border-red-300 dark:border-red-800">
-                                  <XCircle className="w-3.5 h-3.5" />
-                                  Rejected
-                                </span>
-                              )}
+                            </td>
+                            <td className="p-4 font-bold text-slate-600 dark:text-slate-400">{rm.unit}</td>
+                            <td className="p-4 text-right font-mono text-slate-600 dark:text-slate-400">
+                              {rm.currentStock.toLocaleString()}
                             </td>
                             <td className="p-4 text-right">
-                              {req.status === 'PENDING' ? (
-                                <div className="flex items-center justify-end gap-2">
+                              {isEditingThis ? (
+                                <div className="flex items-center justify-end gap-1.5">
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setSelectedRateRequest(req);
-                                      setCustomApprovedRate(String(req.proposedRate));
-                                      setIsApprovalModalOpen(true);
-                                    }}
-                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all"
+                                    disabled={isSavingRmRate}
+                                    onClick={() => handleSaveDirectRate(rm.id)}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all"
+                                    title="Save rate and recalculate product costs"
                                   >
-                                    Approve Rate
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>{isSavingRmRate ? 'Saving...' : 'Save & Recalc'}</span>
                                   </button>
                                   <button
                                     type="button"
+                                    disabled={isSavingRmRate}
                                     onClick={() => {
-                                      setSelectedRateRequest(req);
-                                      setRejectionReasonInput('');
-                                      setIsRejectModalOpen(true);
+                                      setEditingRmId(null);
+                                      setEditingRmRate('');
                                     }}
-                                    className="px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 text-red-700 dark:text-red-300 font-bold text-xs transition-all"
+                                    className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                    title="Cancel"
                                   >
-                                    Reject
+                                    <X className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                               ) : (
-                                <span className="text-xs text-slate-400 font-semibold">Processed</span>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingRmId(rm.id);
+                                      setEditingRmRate(String(currentRate));
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-800 dark:text-amber-300 font-bold text-xs transition-all"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                    <span>Fix / Update Rate</span>
+                                  </button>
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -1618,71 +1644,445 @@ export default function SuperAdminDashboardPage() {
               </div>
             </div>
 
-            {/* Notifications Feed */}
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
-              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <Bell className="w-5 h-5 text-amber-600" />
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                    Live System &amp; Procurement Notifications
-                  </h3>
+            {/* SECTION 2: PROCUREMENT RATE REQUESTS REVIEW PANEL & NOTIFICATIONS */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Rate Change Requests Table (2 cols) */}
+              <div className="lg:col-span-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm flex flex-col">
+                <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                      Procurement Rate Requests Review Panel
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                      Approving triggers automatic recalculation of affected product cost prices.
+                    </p>
+                  </div>
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                    {rateRequests.length} Total
+                  </span>
                 </div>
-                {unreadNotifCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleMarkAllNotificationsRead}
-                    className="text-xs text-blue-600 hover:underline font-bold"
-                  >
-                    Mark All Read
-                  </button>
-                )}
+
+                <div className="overflow-x-auto flex-1">
+                  <table className="w-full text-left text-sm border-collapse">
+                    <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                      <tr>
+                        <th className="p-4">Raw Material</th>
+                        <th className="p-4 text-right">Active</th>
+                        <th className="p-4 text-right">Proposed</th>
+                        <th className="p-4 text-right">Variance</th>
+                        <th className="p-4">Reason</th>
+                        <th className="p-4 text-center">Status</th>
+                        <th className="p-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                      {rateRequests.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-slate-500">
+                            No rate change requests submitted yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        rateRequests.map((req) => {
+                          const cur = Number(req.currentRate || 0);
+                          const prop = Number(req.proposedRate || 0);
+                          const diff = prop - cur;
+                          const pct = cur > 0 ? (diff / cur) * 100 : 0;
+                          const isIncrease = diff > 0;
+
+                          return (
+                            <tr key={req.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                              <td className="p-4">
+                                <div className="font-bold text-slate-900 dark:text-white">
+                                  {req.rawMaterial?.name || 'Raw Material'}
+                                </div>
+                                <div className="text-xs font-mono text-slate-400">
+                                  {req.rawMaterial?.materialCode || req.rawMaterialId}
+                                </div>
+                              </td>
+                              <td className="p-4 text-right font-mono text-slate-600 dark:text-slate-400">
+                                ₹{cur.toFixed(2)}
+                              </td>
+                              <td className="p-4 text-right font-mono font-black text-slate-900 dark:text-white">
+                                ₹{prop.toFixed(2)}
+                              </td>
+                              <td className="p-4 text-right font-mono">
+                                <span
+                                  className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs font-bold ${
+                                    diff === 0
+                                      ? 'bg-slate-100 text-slate-700'
+                                      : isIncrease
+                                      ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                                      : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                                  }`}
+                                >
+                                  {isIncrease ? '+' : ''}
+                                  {diff.toFixed(2)} ({isIncrease ? '+' : ''}
+                                  {pct.toFixed(1)}%)
+                                </span>
+                              </td>
+                              <td className="p-4 max-w-xs text-xs text-slate-600 dark:text-slate-300">
+                                <p className="line-clamp-2">{req.reason || 'Procurement rate change'}</p>
+                                {req.rejectionReason && (
+                                  <p className="text-xs text-red-600 font-bold mt-1">
+                                    Rejected: {req.rejectionReason}
+                                  </p>
+                                )}
+                              </td>
+                              <td className="p-4 text-center">
+                                {req.status === 'PENDING' && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 whitespace-nowrap">
+                                    <Clock className="w-3 h-3" />
+                                    Pending
+                                  </span>
+                                )}
+                                {req.status === 'APPROVED' && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 whitespace-nowrap">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Approved
+                                  </span>
+                                )}
+                                {req.status === 'REJECTED' && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300 border border-red-300 dark:border-red-800 whitespace-nowrap">
+                                    <XCircle className="w-3 h-3" />
+                                    Rejected
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-4 text-right">
+                                {req.status === 'PENDING' ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedRateRequest(req);
+                                        setCustomApprovedRate(String(req.proposedRate));
+                                        setIsApprovalModalOpen(true);
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedRateRequest(req);
+                                        setRejectionReasonInput('');
+                                        setIsRejectModalOpen(true);
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 text-red-700 dark:text-red-300 font-bold text-xs transition-all"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400 font-semibold">Processed</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {notifications.length === 0 ? (
-                  <div className="p-6 text-center text-slate-500 text-sm">
-                    No notifications recorded for this facility yet.
+              {/* Notifications Feed (1 col) */}
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm flex flex-col">
+                <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-amber-600" />
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">
+                      Notifications
+                    </h3>
                   </div>
-                ) : (
-                  notifications.map((n) => (
-                    <div
-                      key={n.id}
-                      className={`p-4 flex items-start justify-between gap-4 transition-colors ${
-                        !n.isRead ? 'bg-amber-50/60 dark:bg-amber-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/40'
-                      }`}
+                  {unreadNotifCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAllNotificationsRead}
+                      className="text-xs text-blue-600 hover:underline font-bold"
                     >
-                      <div className="flex items-start gap-3">
-                        <span
-                          className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${
-                            !n.isRead ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
-                          }`}
-                        />
-                        <div>
-                          <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                            <span>{n.title}</span>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                              {n.type}
+                      Clear All
+                    </button>
+                  )}
+                </div>
+
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 overflow-y-auto max-h-[380px]">
+                  {notifications.length === 0 ? (
+                    <div className="p-6 text-center text-slate-500 text-sm">
+                      No notifications recorded for this facility yet.
+                    </div>
+                  ) : (
+                    notifications.map((n) => (
+                      <div
+                        key={n.id}
+                        className={`p-3.5 flex items-start justify-between gap-3 transition-colors ${
+                          !n.isRead ? 'bg-amber-50/60 dark:bg-amber-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/40'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <span
+                            className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                              !n.isRead ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
+                            }`}
+                          />
+                          <div>
+                            <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                              <span>{n.title}</span>
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                {n.type}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">{n.message}</p>
+                            <span className="text-[10px] text-slate-400 mt-0.5 block">
+                              {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">{n.message}</p>
-                          <span className="text-[10px] text-slate-400 mt-1 block">
-                            {new Date(n.createdAt).toLocaleString()}
-                          </span>
                         </div>
-                      </div>
 
-                      {!n.isRead && (
-                        <button
-                          type="button"
-                          onClick={() => handleMarkNotificationRead(n.id)}
-                          className="px-2.5 py-1 rounded text-xs font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap shrink-0"
-                        >
-                          Mark Read
-                        </button>
-                      )}
-                    </div>
-                  ))
-                )}
+                        {!n.isRead && (
+                          <button
+                            type="button"
+                            onClick={() => handleMarkNotificationRead(n.id)}
+                            className="px-2 py-0.5 rounded text-[11px] font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap shrink-0"
+                          >
+                            Mark Read
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 3: PRODUCT COST PRICE (AUTO-BOM) & SELLING PRICE GOVERNANCE */}
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                      Product Cost Price (Auto-BOM) &amp; Selling Price Governance
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">
+                      Live Margin Visibility
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                    Cost Prices automatically reflect current raw material rates. Super Admin can edit Selling Prices to lock in target profit margins.
+                  </p>
+                </div>
+                <div className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 whitespace-nowrap self-start sm:self-auto">
+                  {products.length} Products
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="p-4">SKU Code</th>
+                      <th className="p-4">Product Name</th>
+                      <th className="p-4">Category</th>
+                      <th className="p-4 text-right">Cost Price (Auto-BOM)</th>
+                      <th className="p-4 text-right">Selling Price</th>
+                      <th className="p-4 text-right">Profit Margin</th>
+                      <th className="p-4">Unit &amp; Stock</th>
+                      <th className="p-4 text-right">Quick Price Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                    {products.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-500">
+                          No finished products registered.
+                        </td>
+                      </tr>
+                    ) : (
+                      products.map((p) => {
+                        const cost = Number(p.costPrice || 0);
+                        const selling = Number(p.sellingPrice || 0);
+                        const marginAmt = p.profitMarginAmount !== undefined ? p.profitMarginAmount : Number((selling - cost).toFixed(2));
+                        const marginPct =
+                          p.profitMarginPercentage !== undefined
+                            ? p.profitMarginPercentage
+                            : cost > 0
+                            ? Number((((selling - cost) / cost) * 100).toFixed(1))
+                            : 0;
+                        const isProfitable = marginAmt >= 0;
+                        const isEditingThis = editingProductId === p.id;
+                        const isExpanded = expandedBomProductId === p.id;
+                        const hasBom = Array.isArray(p.bomComponents) && p.bomComponents.length > 0;
+
+                        return (
+                          <React.Fragment key={`pricing-gov-${p.id}`}>
+                            <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                              <td className="p-4 font-mono font-bold text-blue-600">{p.sku}</td>
+                              <td className="p-4">
+                                <div className="font-bold text-slate-900 dark:text-white">{p.name}</div>
+                                {hasBom && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedBomProductId(isExpanded ? null : p.id)}
+                                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 mt-0.5"
+                                  >
+                                    <Layers className="w-3 h-3" />
+                                    <span>{isExpanded ? 'Hide BOM Details' : `View BOM (${p.bomComponents?.length} items)`}</span>
+                                  </button>
+                                )}
+                              </td>
+                              <td className="p-4 text-slate-500">{p.category}</td>
+                              <td className="p-4 text-right font-mono">
+                                <div className="font-bold text-slate-900 dark:text-white">
+                                  ₹{cost.toFixed(2)}
+                                </div>
+                                <span className="inline-block text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                                  Auto-Calculated
+                                </span>
+                              </td>
+                              <td className="p-4 text-right font-mono">
+                                {isEditingThis ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <span className="text-xs font-bold text-slate-400">₹</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={editingSellingPrice}
+                                      onChange={(e) => setEditingSellingPrice(e.target.value)}
+                                      className="w-28 p-1.5 rounded-lg border border-blue-500 bg-white dark:bg-slate-800 font-mono text-sm text-right font-bold"
+                                      autoFocus
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                    ₹{selling.toFixed(2)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-4 text-right font-mono">
+                                <div
+                                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                    isProfitable
+                                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                                      : 'bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300'
+                                  }`}
+                                >
+                                  {isProfitable ? (
+                                    <TrendingUp className="w-3 h-3" />
+                                  ) : (
+                                    <TrendingDown className="w-3 h-3" />
+                                  )}
+                                  <span>
+                                    {isProfitable ? '+' : ''}
+                                    {marginPct.toFixed(1)}% (₹{marginAmt.toFixed(2)})
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-4 text-xs font-medium text-slate-600 dark:text-slate-400">
+                                <div>{p.unit}</div>
+                                <div className="font-mono">{p.currentStock.toLocaleString()} in stock</div>
+                              </td>
+                              <td className="p-4 text-right">
+                                {isEditingThis ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      disabled={isUpdatingPrice}
+                                      onClick={() => handleSaveProductSellingPrice(p.id)}
+                                      className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                                      title="Save Selling Price"
+                                    >
+                                      <Check className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={isUpdatingPrice}
+                                      onClick={() => {
+                                        setEditingProductId(null);
+                                        setEditingSellingPrice('');
+                                      }}
+                                      className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                      title="Cancel"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingProductId(p.id);
+                                      setEditingSellingPrice(String(p.sellingPrice || 0));
+                                    }}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm transition-all"
+                                    title="Edit Selling Price"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>Set Selling Price</span>
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                            {isExpanded && hasBom && (
+                              <tr className="bg-slate-50/70 dark:bg-slate-800/30">
+                                <td colSpan={8} className="p-4 pl-12 border-t border-slate-100 dark:border-slate-800">
+                                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-3">
+                                    <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                                      <div className="flex items-center gap-2">
+                                        <Layers className="w-4 h-4 text-blue-600" />
+                                        <span>Bill of Materials (BOM) Breakdown for {p.name}</span>
+                                      </div>
+                                      <span className="font-mono text-emerald-600">
+                                        Total Auto Cost: ₹{cost.toFixed(2)} / {p.unit}
+                                      </span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-left text-xs border-collapse">
+                                        <thead className="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                                          <tr>
+                                            <th className="pb-2 font-bold">Material</th>
+                                            <th className="pb-2 font-bold">Code</th>
+                                            <th className="pb-2 text-right font-bold">Qty Required</th>
+                                            <th className="pb-2 text-right font-bold">Scrap %</th>
+                                            <th className="pb-2 text-right font-bold">RM Rate (₹)</th>
+                                            <th className="pb-2 text-right font-bold">Cost Contribution (₹)</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
+                                          {p.bomComponents?.map((b) => (
+                                            <tr key={b.id}>
+                                              <td className="py-2 font-sans font-semibold text-slate-900 dark:text-white">
+                                                {b.name}
+                                              </td>
+                                              <td className="py-2 text-slate-500">{b.materialCode}</td>
+                                              <td className="py-2 text-right">
+                                                {b.quantity} {b.unit}
+                                              </td>
+                                              <td className="py-2 text-right text-slate-500">
+                                                {((b.scrapFactor - 1) * 100).toFixed(1)}%
+                                              </td>
+                                              <td className="py-2 text-right text-slate-700 dark:text-slate-300">
+                                                ₹{b.rate.toFixed(2)}
+                                              </td>
+                                              <td className="py-2 text-right font-bold text-slate-900 dark:text-white">
+                                                ₹{b.lineCost.toFixed(2)}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </main>

@@ -27,6 +27,16 @@ export class CreateRawMaterialDto {
   @Min(0, { message: 'Selling / valuation price must be non-negative' })
   sellingPrice!: number;
 
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  rate?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  unitPrice?: number;
+
   @IsString()
   @IsNotEmpty({ message: 'Unit of measurement is required' })
   unit!: string;

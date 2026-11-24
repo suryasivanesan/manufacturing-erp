@@ -286,6 +286,16 @@ export class SuperAdminController {
     return this.superAdminService.updateProductPricing(user, id, sellingPrice);
   }
 
+  @Patch('products/:id/selling-price')
+  async updateProductSellingPrice(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('sellingPrice') sellingPrice: number,
+  ) {
+    const user = this.extractUser(req);
+    return this.superAdminService.updateProductPricing(user, id, sellingPrice);
+  }
+
   @Post('products/:id/bom')
   async setProductBom(
     @Request() req: any,

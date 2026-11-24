@@ -2063,6 +2063,7 @@ model RawMaterial {
   supplierName    String?
   storageLocation String?   // e.g. "Silo-A1", "Bay-Chemical-03", "Yard-Scrap-02"
   notes           String?
+  updatedByRole   String?   @default("SUPER_ADMIN") // SUPER_ADMIN, PROCUREMENT, etc.
 
   companyId       String
   company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
