@@ -21,6 +21,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    // Platform Developer Authentication Bypass: Developers have system-wide scope without tenant constraints
+    if (payload.role === 'DEVELOPER' || (payload as any).isDeveloper || payload.sub === 'developer-system') {
+      return {
+        id: payload.sub || 'developer-system',
+        email: payload.email || 'erp@devel.com',
+        username: payload.username || 'platform-developer',
+        role: 'DEVELOPER',
+        isDeveloper: true,
+        department: 'SYSTEM',
+        designation: 'PLATFORM_DEVELOPER',
+        companyId: 'developer-system',
+      };
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       include: {

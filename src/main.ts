@@ -1,6 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { ErrorLoggerService } from './developer/error-logger.service';
+import { GlobalExceptionFilter } from './developer/developer-exception.filter';
 
 async function bootstrap() {
   const logger = new Logger('ManufacturingERP-Server');
@@ -47,6 +49,10 @@ async function bootstrap() {
       forbidNonWhitelisted: false,
     }),
   );
+
+  // Global exception filter to capture live runtime & API errors in memory for the developer view
+  const errorLogger = app.get(ErrorLoggerService);
+  app.useGlobalFilters(new GlobalExceptionFilter(errorLogger));
 
   const port = process.env.PORT || 3001;
   await app.listen(port, '0.0.0.0');

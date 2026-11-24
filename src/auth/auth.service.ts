@@ -231,9 +231,84 @@ export class AuthService {
   }
 
   /**
+   * Platform Developer Authentication: Dedicated login for developers
+   * Supports configurable DEV_EMAIL & DEV_PASSWORD with fallback to erp@devel.com / 123123
+   */
+  async developerLogin(email: string, pass: string): Promise<AuthResponse> {
+    const devEmail = (process.env.DEV_EMAIL || 'erp@devel.com').trim().toLowerCase();
+    const devPassword = process.env.DEV_PASSWORD || '123123';
+
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    if (normalizedEmail !== devEmail || pass !== devPassword) {
+      this.logger.warn(`Failed developer login attempt: Invalid credentials for "${email}"`);
+      throw new UnauthorizedException('Invalid developer credentials');
+    }
+
+    const payload: JwtPayload = {
+      sub: 'developer-system',
+      email: devEmail,
+      username: 'platform-developer',
+      role: 'DEVELOPER',
+      department: 'DEVELOPER',
+      designation: 'PLATFORM_DEVELOPER',
+      companyId: 'developer-system',
+      isDeveloper: true,
+      industryCategory: 'Platform Administration',
+      subCategory: 'Developer View',
+    };
+
+    const accessToken = await this.jwtService.signAsync(payload);
+
+    const userSummary: UserSummary = {
+      id: 'developer-system',
+      employeeCode: 'DEV-ROOT',
+      email: devEmail,
+      username: 'platform-developer',
+      firstName: 'Platform',
+      lastName: 'Developer',
+      role: 'DEVELOPER',
+      department: 'DEVELOPER',
+      designation: 'PLATFORM_DEVELOPER',
+      companyId: 'developer-system',
+      isDeveloper: true,
+      industryCategory: 'Platform Administration',
+      subCategory: 'Developer View',
+      company: {
+        id: 'developer-system',
+        name: 'Developer Administration',
+        code: 'DEV-001',
+        gstNumber: 'DEV-GLOBAL',
+        industryCategory: 'Platform Administration',
+        subCategory: 'Developer View',
+        defaultUnit: 'System',
+      },
+    };
+
+    this.logger.log(`Platform developer "${devEmail}" authenticated successfully`);
+
+    return {
+      accessToken,
+      tokenType: 'Bearer',
+      expiresIn: 86400, // 24 hours
+      user: userSummary,
+    };
+  }
+
+  /**
    * Authenticate user and issue JWT token
    */
   async login(loginDto: LoginDto): Promise<AuthResponse> {
+    const devEmail = (process.env.DEV_EMAIL || 'erp@devel.com').trim().toLowerCase();
+    const devPassword = process.env.DEV_PASSWORD || '123123';
+
+    // Intercept developer credentials if entered in the standard login form
+    if (
+      loginDto.identifier?.trim().toLowerCase() === devEmail &&
+      loginDto.password === devPassword
+    ) {
+      return this.developerLogin(loginDto.identifier, loginDto.password);
+    }
+
     const user = await this.validateUser(loginDto.identifier, loginDto.password);
 
     if (!user.companyId) {

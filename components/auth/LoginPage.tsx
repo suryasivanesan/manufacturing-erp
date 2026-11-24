@@ -106,11 +106,17 @@ export default function LoginPage() {
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      const response = await fetch(`${apiUrl}/auth/login`, {
+      const isDevAttempt = identifier.trim().toLowerCase() === 'erp@devel.com';
+      const endpoint = isDevAttempt
+        ? `${apiUrl}/auth/developer-login`
+        : `${apiUrl}/auth/login`;
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           identifier: identifier.trim(),
+          email: identifier.trim(),
           password,
         }),
       });
@@ -124,8 +130,15 @@ export default function LoginPage() {
         throw new Error(errorMsg);
       }
 
+      const isDeveloper =
+        data.user?.role === 'DEVELOPER' ||
+        identifier.trim().toLowerCase() === 'erp@devel.com';
+
       if (data.accessToken) {
         localStorage.setItem('access_token', data.accessToken);
+        if (isDeveloper) {
+          localStorage.setItem('developer_token', data.accessToken);
+        }
         if (data.user) {
           localStorage.setItem('auth_user', JSON.stringify(data.user));
         }
@@ -133,7 +146,11 @@ export default function LoginPage() {
 
       setIsSuccess(true);
       setTimeout(() => {
-        router.push('/dashboard');
+        if (isDeveloper) {
+          router.push('/developer/dashboard');
+        } else {
+          router.push('/dashboard');
+        }
       }, 1000);
     } catch (err: any) {
       setServerError(

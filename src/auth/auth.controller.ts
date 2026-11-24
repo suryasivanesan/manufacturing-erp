@@ -43,6 +43,20 @@ export class AuthController {
   }
 
   /**
+   * Dedicated Platform Developer Login endpoint
+   * POST /auth/developer-login
+   */
+  @Post('developer-login')
+  @HttpCode(HttpStatus.OK)
+  async developerLogin(
+    @Body() body: { email?: string; identifier?: string; password?: string },
+  ): Promise<AuthResponse> {
+    const email = body.email || body.identifier || '';
+    const password = body.password || '';
+    return this.authService.developerLogin(email, password);
+  }
+
+  /**
    * Protected route to retrieve authenticated user profile with company configuration
    * Returns ONLY the specialized roles pertinent strictly to the tenant's sub-category
    * GET /auth/profile

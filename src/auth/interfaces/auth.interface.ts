@@ -5,9 +5,10 @@ export interface JwtPayload {
   role: string;
   department: string;
   designation: string;
-  companyId: string;
+  companyId?: string | null;
   industryCategory?: string;
   subCategory?: string;
+  isDeveloper?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -22,9 +23,10 @@ export interface UserSummary {
   role: string;
   department: string;
   designation: string;
-  companyId: string;
+  companyId?: string | null;
   industryCategory?: string;
   subCategory?: string;
+  isDeveloper?: boolean;
   company?: {
     id: string;
     name: string;

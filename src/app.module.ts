@@ -29,6 +29,7 @@ import { ProcurementModule } from './procurement/procurement.module';
 import { SalesModule } from './sales/sales.module';
 import { LogisticsModule } from './logistics/logistics.module';
 import { GateSecurityModule } from './gate-security/gate-security.module';
+import { DeveloperModule } from './developer/developer.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { GateSecurityModule } from './gate-security/gate-security.module';
       envFilePath: '.env',
     }),
     PrismaModule,
+    DeveloperModule,
     AuthModule,
     UsersModule,
     SuperAdminModule,

@@ -105,9 +105,16 @@ export default function LoginPage() {
 
       const loginResult = data as LoginResponse;
 
+      const isDeveloper =
+        (loginResult.user as any)?.role === 'DEVELOPER' ||
+        identifier.trim().toLowerCase() === 'erp@devel.com';
+
       // Store token (or rely on HttpOnly cookie if configured in backend)
       if (loginResult.accessToken) {
         localStorage.setItem('access_token', loginResult.accessToken);
+        if (isDeveloper) {
+          localStorage.setItem('developer_token', loginResult.accessToken);
+        }
         if (loginResult.user) {
           localStorage.setItem('auth_user', JSON.stringify(loginResult.user));
         }
@@ -115,9 +122,13 @@ export default function LoginPage() {
 
       setIsSuccess(true);
 
-      // Redirect to ERP Dashboard or overview route
+      // Redirect to Developer or ERP Dashboard
       setTimeout(() => {
-        router.push('/dashboard');
+        if (isDeveloper) {
+          router.push('/developer/dashboard');
+        } else {
+          router.push('/dashboard');
+        }
       }, 1000);
     } catch (err: any) {
       setServerError(
