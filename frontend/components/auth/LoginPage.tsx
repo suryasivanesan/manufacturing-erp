@@ -156,18 +156,18 @@ export default function LoginPage() {
       </header>
 
       {/* Main Login Card Container */}
-      <div className="relative w-full max-w-md z-10 my-16">
-        <div className="relative rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-2xl p-6 sm:p-8 transition-all duration-300 hover:shadow-blue-500/5">
+      <div className="relative w-full max-w-md z-10 my-12">
+        <div className="relative rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-xl p-6 sm:p-8 transition-all duration-300 hover:shadow-blue-500/5">
           {/* Header Branding */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 mb-4 ring-4 ring-blue-500/10 dark:ring-blue-400/10">
-              <Factory className="w-7 h-7 text-white" />
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25 mb-3 ring-4 ring-blue-500/10 dark:ring-blue-400/10">
+              <Factory className="w-6 h-6 text-white" />
             </div>
 
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
               Manufacturing ERP
             </h1>
-            <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-1.5 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               Sign in to manage plant operations & resources
             </p>
           </div>
@@ -175,10 +175,10 @@ export default function LoginPage() {
           {/* Server Error Alert Banner */}
           {serverError && (
             <div
-              className="mb-6 p-4 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50/80 dark:bg-red-950/40 text-red-700 dark:text-red-300 flex items-start gap-3 text-sm animate-fadeIn"
+              className="mb-5 p-3 rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50/80 dark:bg-red-950/40 text-red-700 dark:text-red-300 flex items-start gap-2.5 text-xs sm:text-sm animate-fadeIn"
               role="alert"
             >
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
               <div className="flex-1 text-xs sm:text-sm">{serverError}</div>
               <button
                 type="button"
@@ -194,10 +194,10 @@ export default function LoginPage() {
           {/* Success Banner */}
           {isSuccess && (
             <div
-              className="mb-6 p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-3 text-sm animate-fadeIn"
+              className="mb-5 p-3 rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-2.5 text-xs sm:text-sm animate-fadeIn"
               role="status"
             >
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
               <span className="text-xs sm:text-sm font-medium">
                 Authentication verified! Directing to operational dashboard...
               </span>
@@ -261,13 +261,13 @@ export default function LoginPage() {
             />
 
             {/* Options: Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between text-xs pt-1">
+            <div className="flex items-center justify-between text-xs pt-0.5">
               <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600 dark:text-slate-400">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500/30 dark:bg-slate-800"
+                  className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500/30 dark:bg-slate-800"
                   disabled={isLoading || isSuccess}
                 />
                 Remember this terminal
@@ -285,7 +285,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading || isSuccess}
-              className="w-full mt-2 py-3.5 px-4 rounded-xl font-semibold text-sm text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 shadow-lg shadow-blue-500/25 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100 transition-all duration-200 flex items-center justify-center gap-2"
+              className="w-full mt-2 py-2.5 px-4 rounded-lg font-semibold text-xs sm:text-sm text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 shadow-sm shadow-blue-500/25 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100 transition-all duration-200 flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <>
@@ -307,7 +307,7 @@ export default function LoginPage() {
           </form>
 
           {/* Visual Divider */}
-          <div className="relative my-6">
+          <div className="relative my-5">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-200 dark:border-slate-800" />
             </div>
@@ -322,10 +322,10 @@ export default function LoginPage() {
           <div>
             <Link
               href="/auth/register"
-              className="w-full group flex items-center justify-between p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-all duration-200 text-left"
+              className="w-full group flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-all duration-200 text-left"
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
+                <div className="p-2 rounded-md bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
                   <Building2 className="w-4 h-4" />
                 </div>
                 <div>
@@ -342,7 +342,7 @@ export default function LoginPage() {
           </div>
 
           {/* Bottom Security Footer */}
-          <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+          <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
             <Cpu className="w-3.5 h-3.5" />
             <span>Industrial IoT & Industry 4.0 Standard Encryption</span>
           </div>

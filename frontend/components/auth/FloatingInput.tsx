@@ -44,7 +44,7 @@ export default function FloatingInput({
   return (
     <div className={`relative w-full ${containerClassName}`}>
       <div
-        className={`relative flex items-center rounded-xl border bg-white/70 dark:bg-slate-900/60 backdrop-blur-md transition-all duration-200 ${
+        className={`relative flex items-center rounded-lg border bg-white/70 dark:bg-slate-900/60 backdrop-blur-md transition-all duration-200 ${
           error
             ? 'border-red-500/80 focus-within:ring-2 focus-within:ring-red-500/30'
             : isFocused
@@ -69,7 +69,7 @@ export default function FloatingInput({
             onFocus={handleFocus}
             onBlur={handleBlur}
             placeholder={placeholder}
-            className={`peer w-full pt-6 pb-2 px-3 text-sm font-medium text-slate-900 dark:text-slate-100 bg-transparent placeholder-transparent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+            className={`peer w-full pt-5 pb-1.5 px-3 text-xs sm:text-sm font-normal text-slate-900 dark:text-slate-100 bg-transparent placeholder-transparent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
             {...rest}
           />
 
@@ -78,13 +78,13 @@ export default function FloatingInput({
             htmlFor={id}
             className={`absolute left-3 pointer-events-none transition-all duration-200 select-none ${
               isFloating
-                ? 'top-1.5 text-xs font-semibold ' +
+                ? 'top-1 text-[10px] sm:text-xs font-medium ' +
                   (error
                     ? 'text-red-500 dark:text-red-400'
                     : isFocused
                     ? 'text-blue-600 dark:text-blue-400'
                     : 'text-slate-500 dark:text-slate-400')
-                : 'top-4 text-sm font-normal text-slate-500 dark:text-slate-400'
+                : 'top-3 text-xs sm:text-sm font-normal text-slate-500 dark:text-slate-400'
             }`}
           >
             {label}
@@ -99,7 +99,7 @@ export default function FloatingInput({
 
       {/* Field Error Message */}
       {error && (
-        <p className="mt-1.5 text-xs font-medium text-red-500 dark:text-red-400 flex items-center gap-1 animate-fadeIn">
+        <p className="mt-1 text-xs font-normal text-red-500 dark:text-red-400 flex items-center gap-1 animate-fadeIn">
           <span className="inline-block w-1 h-1 rounded-full bg-red-500"></span>
           {error}
         </p>

@@ -155,9 +155,9 @@ export default function LoginPage() {
       {/* Top Header with Portal Badge and Theme Switcher */}
       <header className="absolute top-6 left-0 right-0 max-w-6xl mx-auto px-6 flex items-center justify-between z-20">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-base font-bold text-slate-700 dark:text-slate-300">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300">
               Manufacturing ERP Portal
             </span>
           </div>
@@ -168,32 +168,32 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={toggleTheme}
-            className="inline-flex items-center justify-center w-11 h-11 rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            className="inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             aria-label="Toggle theme mode"
           >
             {isDark ? (
-              <Sun className="w-5 h-5 text-amber-400" />
+              <Sun className="w-4 h-4 text-amber-400" />
             ) : (
-              <Moon className="w-5 h-5 text-slate-600" />
+              <Moon className="w-4 h-4 text-slate-600" />
             )}
           </button>
         )}
       </header>
 
       {/* Main Centered Authentication Card */}
-      <div className="relative w-full max-w-lg z-10 my-16">
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/50 dark:shadow-none p-8 sm:p-10 transition-all">
+      <div className="relative w-full max-w-md z-10 my-12">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/50 dark:shadow-none p-6 sm:p-8 transition-all">
           {/* Brand Logo & Header */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/30 mb-4">
-              <Factory className="w-8 h-8" />
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600 text-white shadow-md shadow-blue-600/30 mb-3">
+              <Factory className="w-6 h-6" />
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
               Manufacturing ERP
             </h1>
-            <p className="mt-2 text-base text-slate-500 dark:text-slate-400">
+            <p className="mt-1.5 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               Sign in to manage plant operations &amp; workforce roles
             </p>
           </div>
@@ -201,10 +201,10 @@ export default function LoginPage() {
           {/* Error Banner */}
           {serverError && (
             <div
-              className="mb-6 p-4 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 flex items-start gap-3 text-base"
+              className="mb-5 p-3 rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 flex items-start gap-2.5 text-xs sm:text-sm"
               role="alert"
             >
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
               <div className="flex-1 font-medium leading-relaxed">{serverError}</div>
               <button
                 type="button"
@@ -220,10 +220,10 @@ export default function LoginPage() {
           {/* Success Banner */}
           {isSuccess && (
             <div
-              className="mb-6 p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 flex items-center gap-3 text-base"
+              className="mb-5 p-3 rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 flex items-center gap-2.5 text-xs sm:text-sm"
               role="status"
             >
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
               <span className="font-semibold">
                 Credentials verified! Loading ERP Dashboard...
               </span>
@@ -231,18 +231,18 @@ export default function LoginPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} noValidate className="space-y-5">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             {/* Identifier Input */}
             <div>
               <label
                 htmlFor="identifier"
-                className="block text-base font-semibold text-slate-700 dark:text-slate-200 mb-1.5"
+                className="block text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 mb-1"
               >
                 Corporate Email or Username
               </label>
-              <div className="relative flex items-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                <div className="pl-4 pr-2 text-slate-400">
-                  <Mail className="w-5 h-5" />
+              <div className="relative flex items-center rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                <div className="pl-3.5 pr-2 text-slate-400">
+                  <Mail className="w-4 h-4" />
                 </div>
                 <input
                   id="identifier"
@@ -255,12 +255,12 @@ export default function LoginPage() {
                     if (errors.identifier) setErrors((prev) => ({ ...prev, identifier: undefined }));
                   }}
                   disabled={isLoading || isSuccess}
-                  className="w-full py-3.5 pr-4 text-base font-medium text-slate-900 dark:text-slate-100 bg-transparent placeholder-slate-400 focus:outline-none disabled:opacity-50"
+                  className="w-full py-2.5 pr-3 text-sm font-normal text-slate-900 dark:text-slate-100 bg-transparent placeholder-slate-400 focus:outline-none disabled:opacity-50"
                   autoComplete="username"
                 />
               </div>
               {errors.identifier && (
-                <p className="mt-1.5 text-sm font-medium text-red-500 dark:text-red-400 flex items-center gap-1.5">
+                <p className="mt-1 text-xs font-medium text-red-500 dark:text-red-400 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
                   {errors.identifier}
                 </p>
@@ -271,13 +271,13 @@ export default function LoginPage() {
             <div>
               <label
                 htmlFor="password"
-                className="block text-base font-semibold text-slate-700 dark:text-slate-200 mb-1.5"
+                className="block text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 mb-1"
               >
                 Password
               </label>
-              <div className="relative flex items-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                <div className="pl-4 pr-2 text-slate-400">
-                  <Lock className="w-5 h-5" />
+              <div className="relative flex items-center rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                <div className="pl-3.5 pr-2 text-slate-400">
+                  <Lock className="w-4 h-4" />
                 </div>
                 <input
                   id="password"
@@ -290,21 +290,21 @@ export default function LoginPage() {
                     if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
                   }}
                   disabled={isLoading || isSuccess}
-                  className="w-full py-3.5 pr-2 text-base font-medium text-slate-900 dark:text-slate-100 bg-transparent placeholder-slate-400 focus:outline-none disabled:opacity-50"
+                  className="w-full py-2.5 pr-2 text-sm font-normal text-slate-900 dark:text-slate-100 bg-transparent placeholder-slate-400 focus:outline-none disabled:opacity-50"
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="pr-4 pl-2 py-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors focus:outline-none"
+                  className="pr-3 pl-2 py-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors focus:outline-none"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                   tabIndex={-1}
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
               {errors.password && (
-                <p className="mt-1.5 text-sm font-medium text-red-500 dark:text-red-400 flex items-center gap-1.5">
+                <p className="mt-1 text-xs font-medium text-red-500 dark:text-red-400 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
                   {errors.password}
                 </p>
@@ -312,19 +312,19 @@ export default function LoginPage() {
             </div>
 
             {/* Remember Me & Help Links */}
-            <div className="flex items-center justify-between text-base pt-1">
-              <label className="flex items-center gap-2.5 cursor-pointer select-none text-slate-600 dark:text-slate-300">
+            <div className="flex items-center justify-between text-xs sm:text-sm pt-0.5">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600 dark:text-slate-300">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 dark:bg-slate-800"
+                  className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 dark:bg-slate-800"
                   disabled={isLoading || isSuccess}
                 />
                 Remember me
               </label>
 
-              <span className="text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 cursor-pointer">
+              <span className="text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 cursor-pointer">
                 Forgot password?
               </span>
             </div>
@@ -333,21 +333,21 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading || isSuccess}
-              className="w-full mt-2 py-3.5 px-6 rounded-xl font-bold text-base sm:text-lg text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 shadow-md shadow-blue-600/20 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-150 flex items-center justify-center gap-2.5"
+              className="w-full mt-2 py-2.5 px-5 rounded-lg font-semibold text-sm sm:text-base text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 shadow-sm shadow-blue-600/20 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-150 flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
                   <span>Verifying Credentials...</span>
                 </>
               ) : isSuccess ? (
                 <>
-                  <CheckCircle2 className="w-5 h-5 text-white" />
+                  <CheckCircle2 className="w-4 h-4 text-white" />
                   <span>Access Granted</span>
                 </>
               ) : (
                 <>
-                  <ShieldCheck className="w-5 h-5" />
+                  <ShieldCheck className="w-4 h-4" />
                   <span>Sign In</span>
                 </>
               )}
@@ -355,12 +355,12 @@ export default function LoginPage() {
           </form>
 
           {/* Divider */}
-          <div className="relative my-6">
+          <div className="relative my-5">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-200 dark:border-slate-800" />
             </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="bg-white dark:bg-slate-900 px-4 text-slate-400 font-bold uppercase tracking-wider">
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-white dark:bg-slate-900 px-3 text-slate-400 font-semibold uppercase tracking-wider">
                 Enterprise Onboarding
               </span>
             </div>
@@ -369,27 +369,27 @@ export default function LoginPage() {
           {/* New Company Registration Card */}
           <Link
             href="/auth/register"
-            className="group flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-all text-left"
+            className="group flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-all text-left"
           >
-            <div className="flex items-center gap-3.5">
-              <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
-                <Building2 className="w-5 h-5" />
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
+                <Building2 className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-base font-bold text-slate-800 dark:text-slate-100">
+                <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                   New Company Registration
                 </div>
-                <div className="text-sm text-slate-500 dark:text-slate-400">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
                   Register a manufacturing facility &amp; configure sector
                 </div>
               </div>
             </div>
-            <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
           </Link>
 
           {/* Security & Multi-Tenancy Badge */}
-          <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-center gap-2 text-xs sm:text-sm font-medium text-slate-400">
-            <Cpu className="w-4 h-4" />
+          <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-center gap-1.5 text-xs font-normal text-slate-400">
+            <Cpu className="w-3.5 h-3.5" />
             <span>Strict Multi-Tenant Isolation &bull; End-to-End Encrypted</span>
           </div>
         </div>
