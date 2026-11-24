@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsNumber,
   Min,
+  IsArray,
 } from 'class-validator';
 
 export class CreateProductDto {
@@ -52,4 +53,8 @@ export class CreateProductDto {
   @IsString()
   @IsOptional()
   status?: string;
+
+  @IsArray()
+  @IsOptional()
+  bomItems?: Array<{ rawMaterialId: string; quantity: number; scrapFactor?: number }>;
 }

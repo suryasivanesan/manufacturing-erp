@@ -362,20 +362,30 @@ export class SuperAdminService {
         const created = await (this.prisma as any).product.create({
           data: record,
         });
+
+        if (dto.bomItems && Array.isArray(dto.bomItems) && dto.bomItems.length > 0) {
+          await this.setProductBom(user, created.id, dto.bomItems);
+          await this.recalculateCompanyProductCosts(companyId);
+        }
+
         await this.recordAuditMovement(user, {
           action: 'PRODUCT_CREATED',
           module: 'PRODUCTION',
           details: `Registered finished product ${record.name} (SKU: ${record.sku})`,
           movementType: 'INWARD',
         });
-        return created;
+
+        return this.getProduct(user, created.id);
       }
     } catch (err: unknown) {
       this.logger.warn(`Prisma product create fallback: ${this.errMsg(err)}`);
     }
 
+    if (dto.bomItems && Array.isArray(dto.bomItems) && dto.bomItems.length > 0) {
+      await this.setProductBom(user, record.id, dto.bomItems);
+    }
     this.inMemoryProducts.unshift(record);
-    return record;
+    return this.getProduct(user, record.id);
   }
 
   async getProducts(user: UserContext) {

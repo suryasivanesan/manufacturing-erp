@@ -228,10 +228,25 @@ export default function SuperAdminDashboardPage() {
 
   const [prdName, setPrdName] = useState('');
   const [prdCategory, setPrdCategory] = useState('Finished Goods');
-  const [prdCost, setPrdCost] = useState('42000');
-  const [prdSelling, setPrdSelling] = useState('51000');
-  const [prdUnit, setPrdUnit] = useState('MT');
-  const [prdStock, setPrdStock] = useState('120');
+  const [prdCustomCategory, setPrdCustomCategory] = useState('');
+  const [prdSku, setPrdSku] = useState('');
+  const [prdCost, setPrdCost] = useState('0');
+  const [prdSelling, setPrdSelling] = useState('0');
+  const [prdUnit, setPrdUnit] = useState('Piece');
+  const [prdCustomUnit, setPrdCustomUnit] = useState('');
+  const [prdStock, setPrdStock] = useState('0');
+  const [prdMinStock, setPrdMinStock] = useState('10');
+  const [prdHsn, setPrdHsn] = useState('');
+  const [prdDescription, setPrdDescription] = useState('');
+  const [prdBomItems, setPrdBomItems] = useState<
+    Array<{ rawMaterialId: string; quantity: number; scrapFactor: number }>
+  >([]);
+  const [selectedBomRmId, setSelectedBomRmId] = useState('');
+  const [bomItemQty, setBomItemQty] = useState('1');
+  const [bomItemScrap, setBomItemScrap] = useState('0');
+  const [isAutoCalcCost, setIsAutoCalcCost] = useState(false);
+  const [isCreatingProduct, setIsCreatingProduct] = useState(false);
+  const [showBomBuilder, setShowBomBuilder] = useState(false);
 
   const [adjIncrement, setAdjIncrement] = useState('5000');
   const [adjDeduction, setAdjDeduction] = useState('0');
@@ -730,18 +745,117 @@ export default function SuperAdminDashboardPage() {
   // ACTIONS: PRODUCTS
   // =========================================================================
 
+  const handleGenerateSku = () => {
+    const activeCategory = prdCategory === 'OTHER' ? prdCustomCategory : prdCategory;
+    const catCode = (activeCategory || 'FIN')
+      .substring(0, 3)
+      .toUpperCase()
+      .replace(/[^A-Z]/g, 'PRD');
+    const cleanName = (prdName || 'ITEM')
+      .substring(0, 4)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+    const rand = Math.floor(100 + Math.random() * 900);
+    setPrdSku(`PRD-${catCode}-${cleanName || 'SKU'}-${rand}`);
+  };
+
+  const handleAddBomItem = () => {
+    if (!selectedBomRmId) return;
+    const qty = parseFloat(bomItemQty);
+    if (isNaN(qty) || qty <= 0) return;
+    const scrap = parseFloat(bomItemScrap) || 0;
+
+    const nextItems = (() => {
+      const existing = prdBomItems.findIndex((i) => i.rawMaterialId === selectedBomRmId);
+      if (existing >= 0) {
+        const copy = [...prdBomItems];
+        copy[existing] = { rawMaterialId: selectedBomRmId, quantity: qty, scrapFactor: scrap / 100 };
+        return copy;
+      }
+      return [...prdBomItems, { rawMaterialId: selectedBomRmId, quantity: qty, scrapFactor: scrap / 100 }];
+    })();
+
+    setPrdBomItems(nextItems);
+    if (isAutoCalcCost) {
+      const total = nextItems.reduce((acc, item) => {
+        const rm = rawMaterials.find((r) => r.id === item.rawMaterialId);
+        const rate = rm ? Number(rm.rate ?? rm.unitPrice ?? rm.costPrice ?? 0) : 0;
+        return acc + rate * item.quantity * (1 + item.scrapFactor);
+      }, 0);
+      setPrdCost(total.toFixed(2));
+    }
+    setSelectedBomRmId('');
+    setBomItemQty('1');
+    setBomItemScrap('0');
+  };
+
+  const handleRemoveBomItem = (rmId: string) => {
+    const nextItems = prdBomItems.filter((i) => i.rawMaterialId !== rmId);
+    setPrdBomItems(nextItems);
+    if (isAutoCalcCost) {
+      const total = nextItems.reduce((acc, item) => {
+        const rm = rawMaterials.find((r) => r.id === item.rawMaterialId);
+        const rate = rm ? Number(rm.rate ?? rm.unitPrice ?? rm.costPrice ?? 0) : 0;
+        return acc + rate * item.quantity * (1 + item.scrapFactor);
+      }, 0);
+      setPrdCost(total.toFixed(2));
+    }
+  };
+
+  const handleResetProductForm = () => {
+    setPrdName('');
+    setPrdCategory('Finished Goods');
+    setPrdCustomCategory('');
+    setPrdSku('');
+    setPrdCost('0');
+    setPrdSelling('0');
+    setPrdUnit('Piece');
+    setPrdCustomUnit('');
+    setPrdStock('0');
+    setPrdMinStock('10');
+    setPrdHsn('');
+    setPrdDescription('');
+    setPrdBomItems([]);
+    setSelectedBomRmId('');
+    setBomItemQty('1');
+    setBomItemScrap('0');
+    setIsAutoCalcCost(false);
+    setShowBomBuilder(false);
+  };
+
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!prdName.trim()) {
+      setFeedbackError('Please enter a valid product name.');
+      return;
+    }
+
+    const finalCategory = prdCategory === 'OTHER' ? prdCustomCategory.trim() || 'General' : prdCategory;
+    const finalUnit = prdUnit === 'OTHER' ? prdCustomUnit.trim() || 'Unit' : prdUnit;
+    const finalCost = parseFloat(prdCost) || 0;
+    const finalSelling = parseFloat(prdSelling) || 0;
+    const finalStock = parseFloat(prdStock) || 0;
+    const finalMinStock = parseFloat(prdMinStock) || 5;
+    const finalSku =
+      prdSku.trim() ||
+      `PRD-${finalCategory.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'PRD')}-${Math.floor(100 + Math.random() * 900)}`;
+
+    setIsCreatingProduct(true);
     const token = localStorage.getItem('access_token');
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
     const payload = {
-      name: prdName,
-      category: prdCategory,
-      costPrice: parseFloat(prdCost),
-      sellingPrice: parseFloat(prdSelling),
-      unit: prdUnit,
-      currentStock: parseFloat(prdStock),
+      name: prdName.trim(),
+      category: finalCategory,
+      sku: finalSku,
+      costPrice: finalCost,
+      sellingPrice: finalSelling,
+      unit: finalUnit,
+      currentStock: finalStock,
+      minStockLevel: finalMinStock,
+      hsnCode: prdHsn.trim() || undefined,
+      description: prdDescription.trim() || undefined,
+      bomItems: prdBomItems.length > 0 ? prdBomItems : undefined,
     };
 
     try {
@@ -757,27 +871,57 @@ export default function SuperAdminDashboardPage() {
         if (res.ok) {
           const created = await res.json();
           setProducts((prev) => [created, ...prev]);
+          setPricingOverview((prev) => [created, ...prev]);
+          const margin = created.profitMarginPercentage ?? (finalCost > 0 ? (((finalSelling - finalCost) / finalCost) * 100).toFixed(1) : 0);
+          setFeedbackSuccess(`Product "${created.name}" (SKU: ${created.sku}) successfully registered with Margin: ${margin}%!`);
+          handleResetProductForm();
+          setIsProductModalOpen(false);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setFeedbackError(err.message || 'Failed to create product SKU.');
         }
       } else {
+        const marginAmt = Number((finalSelling - finalCost).toFixed(2));
+        const marginPct = finalCost > 0 ? Number((((finalSelling - finalCost) / finalCost) * 100).toFixed(1)) : 0;
         const newPrd: ProductItem = {
           id: `prd-${Date.now()}`,
-          sku: `SKU-${prdCategory.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
-          name: prdName,
-          category: prdCategory,
-          costPrice: parseFloat(prdCost),
-          sellingPrice: parseFloat(prdSelling),
-          unit: prdUnit,
-          currentStock: parseFloat(prdStock),
-          minStockLevel: 10,
+          sku: finalSku,
+          name: prdName.trim(),
+          category: finalCategory,
+          costPrice: finalCost,
+          sellingPrice: finalSelling,
+          profitMarginAmount: marginAmt,
+          profitMarginPercentage: marginPct,
+          unit: finalUnit,
+          currentStock: finalStock,
+          minStockLevel: finalMinStock,
           status: 'ACTIVE',
+          bomComponents: prdBomItems.map((item) => {
+            const rm = rawMaterials.find((r) => r.id === item.rawMaterialId);
+            const rate = rm ? Number(rm.rate ?? rm.unitPrice ?? rm.costPrice ?? 0) : 0;
+            return {
+              id: `b-${Date.now()}-${item.rawMaterialId}`,
+              rawMaterialId: item.rawMaterialId,
+              name: rm?.name || 'Raw Material',
+              materialCode: rm?.materialCode || item.rawMaterialId,
+              rate,
+              unit: rm?.unit || 'unit',
+              quantity: item.quantity,
+              scrapFactor: item.scrapFactor,
+              lineCost: Number((rate * item.quantity * (1 + item.scrapFactor)).toFixed(2)),
+            };
+          }),
         };
         setProducts((prev) => [newPrd, ...prev]);
+        setPricingOverview((prev) => [newPrd, ...prev]);
+        setFeedbackSuccess(`Product "${newPrd.name}" (SKU: ${newPrd.sku}) registered in catalog.`);
+        handleResetProductForm();
+        setIsProductModalOpen(false);
       }
-      setFeedbackSuccess(`Product "${prdName}" registered in enterprise catalog.`);
-      setIsProductModalOpen(false);
-      setPrdName('');
     } catch {
       setFeedbackError('Failed to register product.');
+    } finally {
+      setIsCreatingProduct(false);
     }
   };
 
@@ -1888,8 +2032,21 @@ export default function SuperAdminDashboardPage() {
                     Cost Prices automatically reflect current raw material rates. Super Admin can edit Selling Prices to lock in target profit margins.
                   </p>
                 </div>
-                <div className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 whitespace-nowrap self-start sm:self-auto">
-                  {products.length} Products
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                    {products.length} Products
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleResetProductForm();
+                      setIsProductModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Product SKU</span>
+                  </button>
                 </div>
               </div>
 
@@ -2233,11 +2390,14 @@ export default function SuperAdminDashboardPage() {
 
               <button
                 type="button"
-                onClick={() => setIsProductModalOpen(true)}
+                onClick={() => {
+                  handleResetProductForm();
+                  setIsProductModalOpen(true);
+                }}
                 className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-base shadow-sm"
               >
                 <Plus className="w-5 h-5" />
-                <span>Register Product SKU</span>
+                <span>Add Product SKU</span>
               </button>
             </div>
 
@@ -2843,91 +3003,503 @@ export default function SuperAdminDashboardPage() {
       )}
 
       {/* =================================================================== */}
-      {/* MODAL 2: REGISTER FINISHED PRODUCT                                  */}
+      {/* MODAL 2: REGISTER FINISHED PRODUCT (DETAILED CLASSIFICATION)        */}
       {/* =================================================================== */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-xl font-bold">Register Finished Product</h3>
-              <button type="button" onClick={() => setIsProductModalOpen(false)}>
-                <X className="w-5 h-5 text-slate-400" />
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 border border-blue-200 dark:border-blue-800">
+                  <Factory className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                    Add New Product SKU
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Structure product classification, units, costing margins, and inventory safety thresholds for {companyName}.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  handleResetProductForm();
+                  setIsProductModalOpen(false);
+                }}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateProduct} className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold mb-1">Product Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 110mm PVC Pressure Pipe PN10"
-                  value={prdName}
-                  onChange={(e) => setPrdName(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base font-semibold"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-bold mb-1">Mfg Cost (₹)</label>
-                  <input
-                    type="number"
-                    required
-                    value={prdCost}
-                    onChange={(e) => setPrdCost(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base font-semibold font-mono"
-                  />
+            <form onSubmit={handleCreateProduct} className="space-y-6">
+              {/* SECTION 1: CORE IDENTIFICATION & CLASSIFICATION */}
+              <div className="space-y-3.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-600" />
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    1. Core Identification &amp; Classification
+                  </h4>
                 </div>
-                <div>
-                  <label className="block text-sm font-bold mb-1">Catalog Price (₹)</label>
-                  <input
-                    type="number"
-                    required
-                    value={prdSelling}
-                    onChange={(e) => setPrdSelling(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base font-semibold font-mono"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-bold mb-1">Unit</label>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    Product Name *
+                  </label>
                   <input
                     type="text"
                     required
-                    value={prdUnit}
-                    onChange={(e) => setPrdUnit(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base font-semibold"
+                    placeholder="e.g. 110mm PVC Pressure Pipe PN10 or Radial Steel Sheet 2mm"
+                    value={prdName}
+                    onChange={(e) => setPrdName(e.target.value)}
+                    className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-sm font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                   />
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      Category Classification *
+                    </label>
+                    <select
+                      value={prdCategory}
+                      onChange={(e) => setPrdCategory(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold"
+                    >
+                      <option value="Finished Goods">Finished Goods</option>
+                      <option value="Sub-Assemblies">Sub-Assemblies</option>
+                      <option value="Commercial Stock">Commercial Stock</option>
+                      <option value="Industrial Components">Industrial Components</option>
+                      <option value="Chemicals & Solutions">Chemicals &amp; Solutions</option>
+                      <option value="Consumables">Consumables</option>
+                      <option value="OTHER">Custom / Other Category...</option>
+                    </select>
+                    {prdCategory === 'OTHER' && (
+                      <input
+                        type="text"
+                        required
+                        placeholder="Enter custom category name"
+                        value={prdCustomCategory}
+                        onChange={(e) => setPrdCustomCategory(e.target.value)}
+                        className="w-full mt-2 p-2 rounded-xl border border-blue-400 bg-transparent text-xs font-semibold"
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-400">
+                        SKU Code *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleGenerateSku}
+                        className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-bold"
+                      >
+                        Auto-Generate SKU
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. PRD-FIN-101 (auto if blank)"
+                      value={prdSku}
+                      onChange={(e) => setPrdSku(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-sm font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      Unit of Measurement (UOM) *
+                    </label>
+                    <select
+                      value={prdUnit}
+                      onChange={(e) => setPrdUnit(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold"
+                    >
+                      <option value="Piece">Piece (Pcs)</option>
+                      <option value="Unit">Unit (Units)</option>
+                      <option value="Liter">Liter (Ltr)</option>
+                      <option value="Kg">Kilogram (Kg)</option>
+                      <option value="MT">Metric Ton (MT)</option>
+                      <option value="m">Meter (m)</option>
+                      <option value="Box">Box (Boxes)</option>
+                      <option value="OTHER">Custom Unit...</option>
+                    </select>
+                    {prdUnit === 'OTHER' && (
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Barrel, Roll, Drum"
+                        value={prdCustomUnit}
+                        onChange={(e) => setPrdCustomUnit(e.target.value)}
+                        className="w-full mt-2 p-2 rounded-xl border border-blue-400 bg-transparent text-xs font-semibold"
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      HSN / Statutory Code (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. HSN-7204-10"
+                      value={prdHsn}
+                      onChange={(e) => setPrdHsn(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-sm font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 2: PRICING ARCHITECTURE & GROSS MARGINS */}
+              <div className="space-y-3.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    2. Pricing Architecture &amp; Gross Margins
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-400">
+                        Cost Price (₹ per {prdUnit === 'OTHER' ? prdCustomUnit || 'unit' : prdUnit}) *
+                      </label>
+                      {isAutoCalcCost && (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
+                          Auto-BOM
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={prdCost}
+                      onChange={(e) => {
+                        setIsAutoCalcCost(false);
+                        setPrdCost(e.target.value);
+                      }}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base font-mono font-bold"
+                    />
+                    <span className="text-[11px] text-slate-400 mt-0.5 block">
+                      Direct conversion cost or auto-derived from raw materials.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      Selling Price (₹ per {prdUnit === 'OTHER' ? prdCustomUnit || 'unit' : prdUnit}) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={prdSelling}
+                      onChange={(e) => setPrdSelling(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-emerald-500 bg-transparent text-base font-mono font-bold text-emerald-600 dark:text-emerald-400"
+                    />
+                    <span className="text-[11px] text-slate-400 mt-0.5 block">
+                      Customer catalog price configured by Super Admin.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Live Real-Time Gross Margin Preview */}
+                {(() => {
+                  const cost = parseFloat(prdCost) || 0;
+                  const selling = parseFloat(prdSelling) || 0;
+                  const marginAmt = selling - cost;
+                  const marginPct = cost > 0 ? (marginAmt / cost) * 100 : 0;
+                  const isPositive = marginAmt >= 0;
+
+                  return (
+                    <div
+                      className={`p-3.5 rounded-xl border flex items-center justify-between text-xs font-semibold ${
+                        isPositive
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                          : 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                        <span>Live Gross Margin:</span>
+                      </div>
+                      <div className="font-mono text-sm font-black">
+                        {isPositive ? '+' : ''}₹{marginAmt.toFixed(2)} ({isPositive ? '+' : ''}
+                        {marginPct.toFixed(1)}%)
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* SECTION 3: BILL OF MATERIALS (BOM) & RAW MATERIAL LINK (OPTIONAL) */}
+              <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-600" />
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                      3. Bill of Materials (BOM) Raw Material Link
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowBomBuilder(!showBomBuilder)}
+                    className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>{showBomBuilder ? 'Hide BOM Builder' : `Link Ingredients (${prdBomItems.length})`}</span>
+                  </button>
+                </div>
+
+                {showBomBuilder && (
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+                    {rawMaterials.length === 0 ? (
+                      <div className="text-xs text-slate-500 py-2">
+                        No raw materials recorded in active inventory yet. Cost Price can be specified directly above.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-end">
+                          <div className="sm:col-span-2">
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                              Raw Material Ingredient
+                            </label>
+                            <select
+                              value={selectedBomRmId}
+                              onChange={(e) => setSelectedBomRmId(e.target.value)}
+                              className="w-full p-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold"
+                            >
+                              <option value="">Select ingredient...</option>
+                              {rawMaterials.map((rm) => (
+                                <option key={rm.id} value={rm.id}>
+                                  {rm.name} ({rm.materialCode}) - ₹{rm.rate ?? rm.costPrice ?? 0}/{rm.unit}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                              Qty Required
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0.001"
+                              value={bomItemQty}
+                              onChange={(e) => setBomItemQty(e.target.value)}
+                              className="w-full p-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                                Scrap %
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={bomItemScrap}
+                                onChange={(e) => setBomItemScrap(e.target.value)}
+                                className="w-full p-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleAddBomItem}
+                              className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs self-end"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+
+                        {prdBomItems.length > 0 && (
+                          <div className="overflow-x-auto pt-2">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead className="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                                <tr>
+                                  <th className="pb-1.5 font-bold">Ingredient</th>
+                                  <th className="pb-1.5 font-bold text-right">Qty</th>
+                                  <th className="pb-1.5 font-bold text-right">Rate</th>
+                                  <th className="pb-1.5 font-bold text-right">Line Cost</th>
+                                  <th className="pb-1.5 text-right"></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
+                                {prdBomItems.map((item) => {
+                                  const rm = rawMaterials.find((r) => r.id === item.rawMaterialId);
+                                  const rate = rm ? Number(rm.rate ?? rm.unitPrice ?? rm.costPrice ?? 0) : 0;
+                                  const lineCost = rate * item.quantity * (1 + item.scrapFactor);
+
+                                  return (
+                                    <tr key={item.rawMaterialId}>
+                                      <td className="py-1.5 font-sans font-semibold text-slate-900 dark:text-white">
+                                        {rm?.name || 'Raw Material'} ({rm?.materialCode})
+                                      </td>
+                                      <td className="py-1.5 text-right">
+                                        {item.quantity} {rm?.unit}
+                                      </td>
+                                      <td className="py-1.5 text-right">₹{rate.toFixed(2)}</td>
+                                      <td className="py-1.5 text-right font-bold text-slate-900 dark:text-white">
+                                        ₹{lineCost.toFixed(2)}
+                                      </td>
+                                      <td className="py-1.5 text-right">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveBomItem(item.rawMaterialId)}
+                                          className="text-slate-400 hover:text-red-600 p-1"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700 text-xs">
+                              <label className="flex items-center gap-2 cursor-pointer font-bold text-blue-600">
+                                <input
+                                  type="checkbox"
+                                  checked={isAutoCalcCost}
+                                  onChange={(e) => {
+                                    setIsAutoCalcCost(e.target.checked);
+                                    if (e.target.checked) {
+                                      const total = prdBomItems.reduce((acc, item) => {
+                                        const rm = rawMaterials.find((r) => r.id === item.rawMaterialId);
+                                        const rate = rm ? Number(rm.rate ?? rm.unitPrice ?? rm.costPrice ?? 0) : 0;
+                                        return acc + rate * item.quantity * (1 + item.scrapFactor);
+                                      }, 0);
+                                      setPrdCost(total.toFixed(2));
+                                    }
+                                  }}
+                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span>Auto-apply BOM Total to Cost Price</span>
+                              </label>
+                              <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                Total: ₹
+                                {prdBomItems
+                                  .reduce((acc, item) => {
+                                    const rm = rawMaterials.find((r) => r.id === item.rawMaterialId);
+                                    const rate = rm ? Number(rm.rate ?? rm.unitPrice ?? rm.costPrice ?? 0) : 0;
+                                    return acc + rate * item.quantity * (1 + item.scrapFactor);
+                                  }, 0)
+                                  .toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 4: INVENTORY LEVELS & SAFETY STOCK THRESHOLDS */}
+              <div className="space-y-3.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-purple-600" />
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    4. Inventory Levels &amp; Safety Stock Thresholds
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      Starting Stock *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={prdStock}
+                      onChange={(e) => setPrdStock(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-sm font-mono font-bold"
+                    />
+                    <span className="text-[11px] text-slate-400 mt-0.5 block">
+                      Initial inventory balance on hand in {prdUnit === 'OTHER' ? prdCustomUnit || 'unit' : prdUnit}.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      Low Stock Threshold (Reorder Alert) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={prdMinStock}
+                      onChange={(e) => setPrdMinStock(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-sm font-mono font-bold text-amber-600"
+                    />
+                    <span className="text-[11px] text-slate-400 mt-0.5 block">
+                      Alert triggers when inventory drops to or below this level.
+                    </span>
+                  </div>
+                </div>
+
                 <div>
-                  <label className="block text-sm font-bold mb-1">Initial Stock</label>
-                  <input
-                    type="number"
-                    required
-                    value={prdStock}
-                    onChange={(e) => setPrdStock(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-base font-semibold font-mono"
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    Product Description &amp; Technical Specifications (Optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={prdDescription}
+                    onChange={(e) => setPrdDescription(e.target.value)}
+                    placeholder="Enter dimensional specifications, tolerances, pressure ratings, or packaging notes..."
+                    className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent text-xs"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              {/* Modal Action Buttons */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setIsProductModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border text-sm font-bold"
+                  onClick={handleResetProductForm}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                 >
-                  Cancel
+                  Clear Form
                 </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold shadow"
-                >
-                  Register SKU
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleResetProductForm();
+                      setIsProductModalOpen(false);
+                    }}
+                    className="px-4 py-2.5 rounded-xl border text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCreatingProduct}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow transition-all flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{isCreatingProduct ? 'Registering SKU...' : 'Register Product SKU'}</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
